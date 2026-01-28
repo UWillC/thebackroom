@@ -1,0 +1,87 @@
+{
+  "id": "snow",
+  "name": "SNOW",
+  "location": "East Coast, USA",
+  "timezone": "EST (UTC-5)",
+
+  "industry": [
+    "networking",
+    "defense",
+    "automation",
+    "cybersecurity"
+  ],
+
+  "role": "NetDevOps Engineer",
+
+  "experience_years": 20,
+
+  "offers": [
+    "Network automation consulting (Cisco, Juniper)",
+    "Air-gapped/secure environment expertise",
+    "Defense sector knowledge",
+    "Python/PowerShell automation scripts",
+    "CVE compliance checking",
+    "Network configuration audits",
+    "Technical documentation best practices"
+  ],
+
+  "seeks": [
+    "Beta testers for network automation tools",
+    "Feedback on NetDevOps tools",
+    "Marketing/growth advice for SaaS",
+    "Connections in defense/government IT"
+  ],
+
+  "contacts": {
+    "industries": ["defense", "networking", "government"],
+    "regions": ["USA", "Europe"],
+    "strength": "medium"
+  },
+
+  "capital": {
+    "time": "limited (30min/day)",
+    "money": "bootstrap ($0)",
+    "runway": "unlimited (stable job)",
+    "skills": [
+      "python",
+      "powershell",
+      "ansible",
+      "cisco",
+      "networking",
+      "automation",
+      "vmware",
+      "security"
+    ]
+  },
+
+  "certifications": [
+    "CCNA",
+    "Azure Fundamentals",
+    "ITIL Foundation"
+  ],
+
+  "product": {
+    "name": "NetDevOps Micro-Tools",
+    "description": "Network automation SaaS for config deployment, CVE checks, golden config validation",
+    "stage": "MVP",
+    "url": "https://demo-netdevops.example.com"
+  },
+
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/demo-snow",
+    "github": "https://github.com/demo-snow"
+  },
+
+  "languages": ["English (professional)", "Polish (native)"],
+
+  "values": [
+    "Zero bullshit",
+    "Practical over theoretical",
+    "Helping others"
+  ],
+
+  "assistant_endpoint": null,
+  "demo": true,
+
+  "updated": "2026-01-28"
+}

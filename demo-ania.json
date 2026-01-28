@@ -1,0 +1,68 @@
+{
+  "id": "ania",
+  "name": "Anna Wisniewska",
+  "location": "Gdansk, Poland",
+  "timezone": "CET (UTC+1)",
+
+  "industry": [
+    "HR",
+    "coaching",
+    "personal development"
+  ],
+
+  "role": "HR Consultant | Career Coach",
+
+  "experience_years": 15,
+
+  "offers": [
+    "HR strategy consulting",
+    "Executive coaching",
+    "Team building workshops",
+    "Recruitment process optimization",
+    "LinkedIn profile optimization"
+  ],
+
+  "seeks": [
+    "Tech companies needing HR help",
+    "Partnerships with IT recruiters",
+    "Guest spots on business podcasts",
+    "Co-author for HR/AI book"
+  ],
+
+  "contacts": {
+    "industries": ["HR", "corporate", "consulting", "tech"],
+    "regions": ["Poland", "Europe"],
+    "strength": "very high"
+  },
+
+  "capital": {
+    "time": "flexible (own business)",
+    "money": "comfortable",
+    "skills": ["coaching", "facilitation", "public speaking", "writing", "linkedin"]
+  },
+
+  "product": {
+    "name": "CareerBoost",
+    "description": "Online course for career transitions",
+    "stage": "launched",
+    "url": "https://demo-careerboost.pl"
+  },
+
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/demo-ania",
+    "website": "https://demo-aniacoach.pl"
+  },
+
+  "languages": ["Polish (native)", "English (fluent)"],
+
+  "values": [
+    "People first",
+    "Authentic leadership",
+    "Lifelong learning"
+  ],
+
+  "assistant_endpoint": null,
+  "demo": true,
+
+  "updated": "2026-01-28"
+}

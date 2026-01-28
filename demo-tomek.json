@@ -1,0 +1,62 @@
+{
+  "id": "tomek",
+  "name": "Tomasz Mazur",
+  "location": "Poznan, Poland",
+  "timezone": "CET (UTC+1)",
+
+  "industry": [
+    "finance",
+    "investing",
+    "real estate"
+  ],
+
+  "role": "Financial Advisor | Real Estate Investor",
+
+  "experience_years": 18,
+
+  "offers": [
+    "Financial planning consulting",
+    "Investment strategy advice",
+    "Real estate deal analysis",
+    "Tax optimization (Poland)",
+    "Angel investing connections"
+  ],
+
+  "seeks": [
+    "Startups looking for angel investment",
+    "PropTech solutions",
+    "Automation tools for finance",
+    "Network of tech founders"
+  ],
+
+  "contacts": {
+    "industries": ["finance", "banking", "real estate", "legal"],
+    "regions": ["Poland"],
+    "strength": "very high"
+  },
+
+  "capital": {
+    "time": "limited",
+    "money": "investor level",
+    "skills": ["finance", "excel", "deal structuring", "negotiation"]
+  },
+
+  "product": null,
+
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/demo-tomek"
+  },
+
+  "languages": ["Polish (native)", "English (business)"],
+
+  "values": [
+    "Long-term thinking",
+    "Financial freedom",
+    "Helping others build wealth"
+  ],
+
+  "assistant_endpoint": null,
+  "demo": true,
+
+  "updated": "2026-01-28"
+}

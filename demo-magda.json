@@ -1,0 +1,67 @@
+{
+  "id": "magda",
+  "name": "Magda Kowalska",
+  "location": "Warszawa, Poland",
+  "timezone": "CET (UTC+1)",
+
+  "industry": [
+    "e-commerce",
+    "marketing",
+    "dropshipping"
+  ],
+
+  "role": "E-commerce Consultant | Shopify Expert",
+
+  "experience_years": 8,
+
+  "offers": [
+    "Shopify store setup and optimization",
+    "E-commerce marketing strategy",
+    "Facebook/Instagram ads management",
+    "Conversion rate optimization",
+    "Product photography tips"
+  ],
+
+  "seeks": [
+    "Tech co-founder for SaaS project",
+    "Developers who know Python/FastAPI",
+    "Connections in logistics/fulfillment",
+    "Beta testers for e-commerce tools"
+  ],
+
+  "contacts": {
+    "industries": ["e-commerce", "retail", "fashion"],
+    "regions": ["Poland", "Europe"],
+    "strength": "high"
+  },
+
+  "capital": {
+    "time": "flexible (freelancer)",
+    "money": "moderate",
+    "skills": ["marketing", "shopify", "ads", "copywriting", "canva"]
+  },
+
+  "product": {
+    "name": "DropshipHelper",
+    "description": "AI tool for finding winning products",
+    "stage": "idea",
+    "url": null
+  },
+
+  "links": {
+    "linkedin": "https://www.linkedin.com/in/demo-magda"
+  },
+
+  "languages": ["Polish (native)", "English (fluent)"],
+
+  "values": [
+    "Data-driven decisions",
+    "Work-life balance",
+    "Helping small businesses grow"
+  ],
+
+  "assistant_endpoint": null,
+  "demo": true,
+
+  "updated": "2026-01-28"
+}

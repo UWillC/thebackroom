@@ -33,6 +33,99 @@ from supabase import create_client, Client
 # Initialize MCP server
 mcp = FastMCP("The Backroom")
 
+
+# ============== PROMPTS (Menu dla użytkownika) ==============
+
+@mcp.prompt()
+def dodaj_profil() -> str:
+    """Dodaj swój profil do The Backroom"""
+    return """Chcę dodać swój profil do The Backroom.
+
+Proszę, zapytaj mnie o:
+1. Imię/nick
+2. Rola zawodowa (np. "Marketing Manager", "Developer")
+3. Umiejętności (rozdzielone przecinkami)
+4. Co oferuję innym (rozdzielone przecinkami)
+5. Czego szukam (rozdzielone przecinkami)
+6. Email (opcjonalnie)
+7. Branża (opcjonalnie)
+
+Potem użyj narzędzia register_profile aby dodać mój profil."""
+
+
+@mcp.prompt()
+def szukaj_wspolpracownikow() -> str:
+    """Znajdź współpracowników w The Backroom"""
+    return """Chcę znaleźć współpracowników w The Backroom.
+
+Zapytaj mnie: czego szukam? (np. "ktoś kto zna marketing", "Python developer", "osoba z doświadczeniem w e-commerce")
+
+Potem użyj narzędzia find_collaborators aby wyszukać dopasowane profile."""
+
+
+@mcp.prompt()
+def sprawdz_requesty() -> str:
+    """Sprawdź kto chce się z Tobą połączyć"""
+    return """Chcę sprawdzić czy ktoś chce się ze mną połączyć w The Backroom.
+
+Zapytaj mnie o moje ID profilu (np. "snow", "marek").
+
+Potem użyj narzędzia check_incoming_requests aby pokazać oczekujące prośby o połączenie."""
+
+
+@mcp.prompt()
+def wyslij_request() -> str:
+    """Wyślij prośbę o połączenie do kogoś"""
+    return """Chcę wysłać prośbę o połączenie do kogoś w The Backroom.
+
+Zapytaj mnie o:
+1. Moje ID profilu
+2. ID osoby do której chcę napisać
+3. Wiadomość którą chcę wysłać
+
+Potem użyj narzędzia send_connection_request."""
+
+
+@mcp.prompt()
+def odpowiedz_na_request() -> str:
+    """Odpowiedz na prośbę o połączenie (akceptuj/odrzuć)"""
+    return """Chcę odpowiedzieć na prośbę o połączenie w The Backroom.
+
+Najpierw użyj check_incoming_requests żeby pokazać moje oczekujące requesty.
+Potem zapytaj czy chcę zaakceptować czy odrzucić, i czy udostępnić email.
+
+Użyj narzędzia respond_to_request aby wysłać odpowiedź."""
+
+
+@mcp.prompt()
+def moje_wyslane() -> str:
+    """Sprawdź status wysłanych próśb o połączenie"""
+    return """Chcę sprawdzić status moich wysłanych próśb o połączenie w The Backroom.
+
+Zapytaj mnie o moje ID profilu.
+
+Potem użyj narzędzia check_my_sent_requests aby pokazać status moich requestów."""
+
+
+@mcp.prompt()
+def pomoc_thebackroom() -> str:
+    """Pokaż co można robić w The Backroom"""
+    return """Pokaż mi co mogę robić w The Backroom.
+
+The Backroom to sieć gdzie asystenci AI łączą swoich ludzi. Dostępne akcje:
+
+1. **Dodaj profil** - zarejestruj się w sieci
+2. **Szukaj współpracowników** - znajdź ludzi po umiejętnościach
+3. **Wyślij prośbę o połączenie** - napisz do kogoś
+4. **Sprawdź requesty** - zobacz kto chce się z Tobą połączyć
+5. **Odpowiedz na request** - akceptuj lub odrzuć
+6. **Sprawdź wysłane** - status Twoich próśb
+
+Która opcja Cię interesuje?"""
+
+
+# ============== SUPABASE ==============
+
 # Supabase connection
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")

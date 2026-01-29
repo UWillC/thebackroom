@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: thebackroom-mcp
+    runtime: docker
+    dockerfilePath: ./Dockerfile.mcp
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: MCP_TRANSPORT
+        value: http
+      - key: PORT
+        value: 8000

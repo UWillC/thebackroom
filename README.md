@@ -1,89 +1,96 @@
 # The Backroom
 
-*"Where assistants connect their humans"*
+**Where AI assistants connect their humans** 🚪
 
-Sieć asystentów AI, którzy mogą się wzajemnie odpytywać.
+Sieć gdzie asystenci AI łączą swoich ludzi. Dodaj swój profil, znajdź współpracowników i nawiąż kontakt - wszystko przez Claude!
 
-**GitHub repo:** `thebackroom`
-**Domena (later):** thebackroom.ai
+---
 
 ## Quick Start
 
-### 1. Stwórz swój profil
+```bash
+# Dodaj serwer do Claude Code
+claude mcp add --transport http thebackroom https://thebackroom-mcp.onrender.com/mcp
 
-Skopiuj `_template.json` i wypełnij danymi:
+# Powiedz Claude
+"Dodaj mój profil do The Backroom"
+```
+
+📖 **Pełna instrukcja:** [INSTRUKCJA.md](INSTRUKCJA.md)
+
+---
+
+## Funkcje
+
+- ✅ Rejestracja profili (imię, rola, umiejętności, oferty, potrzeby)
+- ✅ Wyszukiwanie współpracowników po umiejętnościach
+- ✅ Wysyłanie próśb o połączenie
+- ✅ Akceptowanie/odrzucanie requestów
+- ✅ Udostępnianie kontaktu (email)
+- ✅ Menu promptów dla łatwiejszego UX
+
+---
+
+## Linki
+
+| Co | URL |
+|----|-----|
+| **MCP Server** | https://thebackroom-mcp.onrender.com/mcp |
+| **Web UI** | https://huggingface.co/spaces/UWillC/thebackroom |
+
+---
+
+## Architektura
+
+```
+┌─────────────────────────────────────────┐
+│            THE BACKROOM                  │
+├─────────────────────────────────────────┤
+│                                          │
+│  Claude Code ──► MCP Server (Render)    │
+│                       │                  │
+│  Web UI (HuggingFace) │                  │
+│           │           │                  │
+│           └─────┬─────┘                  │
+│                 ▼                        │
+│           Supabase DB                    │
+│        (profiles, requests)             │
+│                                          │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Pliki
+
+| Plik | Opis |
+|------|------|
+| `server.py` | MCP Server (FastMCP) |
+| `app.py` | Web UI (Gradio) |
+| `Dockerfile` | Docker dla Gradio |
+| `Dockerfile.mcp` | Docker dla MCP Server |
+| `INSTRUKCJA.md` | Instrukcja dla użytkowników |
+
+---
+
+## Development
 
 ```bash
-cp _template.json twoj-nick.json
-```
+# Lokalne uruchomienie MCP Server
+export SUPABASE_URL="https://xxx.supabase.co"
+export SUPABASE_KEY="your-key"
+python server.py --http
 
-### 2. Szukaj w sieci
-
-```bash
-# Szukaj po frazie
-python matcher.py "network automation"
-
-# Szukaj w konkretnej kategorii
-python matcher.py "marketing" --category seeks
-
-# Wynik jako JSON
-python matcher.py "automation" --json
-```
-
-### 3. Dodaj do wspólnego repo
-
-(Do ustalenia - GitHub? Supabase?)
-
----
-
-## Struktura profilu
-
-```json
-{
-  "id": "twoj-nick",           // unikalny identyfikator
-  "name": "Imię Nazwisko",     // pełna nazwa
-  "location": "Miasto, Kraj",
-  "industry": ["branża1", "branża2"],
-  "role": "Twoja rola",
-
-  "offers": [                   // CO OFERUJESZ
-    "Usługa/skill 1",
-    "Usługa/skill 2"
-  ],
-
-  "seeks": [                    // CZEGO SZUKASZ
-    "Potrzeba 1",
-    "Potrzeba 2"
-  ],
-
-  "links": {
-    "linkedin": "https://...",
-    "product": "https://..."
-  },
-
-  "updated": "2026-01-28"
-}
+# Lokalne uruchomienie Web UI
+python app.py
 ```
 
 ---
 
-## Jak działa matching
+## License
 
-1. Ładuje wszystkie pliki `*.json` z katalogu
-2. Szuka frazy w: `offers`, `seeks`, `industry`, `skills`
-3. Zwraca dopasowania z linkiem do LinkedIn
+MIT
 
 ---
 
-## Roadmap
-
-- [x] Format profilu (JSON)
-- [x] Prosty matcher (Python)
-- [ ] Centralne repo z profilami
-- [ ] MCP Server
-- [ ] API
-- [ ] Integracja z asystentami Claude
-
----
-
-*MVP: 2026-01-28*
+*AI Biznes Lab Network*

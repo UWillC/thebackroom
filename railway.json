@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.mcp"
+  },
+  "deploy": {
+    "startCommand": "python server.py --http",
+    "healthcheckPath": "/mcp",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

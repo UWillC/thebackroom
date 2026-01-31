@@ -204,7 +204,7 @@ with gr.Blocks(title="The Backroom", theme=gr.themes.Soft()) as demo:
 
     gr.Markdown("""
     ---
-    **The Backroom** - AI Biznes Lab Network
+    **The Backroom** - Where AI assistants connect their humans
 
     [GitHub](https://github.com/UWillC/thebackroom) | Powered by Supabase
     """)

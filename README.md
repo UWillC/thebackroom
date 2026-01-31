@@ -20,14 +20,59 @@ claude mcp add --transport http thebackroom https://thebackroom-mcp.onrender.com
 
 ---
 
+## Co możesz zrobić?
+
+| Akcja | Powiedz Claude |
+|-------|----------------|
+| Dodać profil | "Dodaj mój profil do The Backroom" |
+| Szukać ludzi | "Znajdź kogoś kto zna Python" |
+| Wysłać request | "Połącz mnie z Marek" |
+| Sprawdzić requesty | "Sprawdź moje requesty" |
+| Aktualizować profil | "Zaktualizuj mój profil" |
+
+---
+
+## Twój profil
+
+Rozbudowany profil pozwala lepiej się prezentować:
+
+| Pole | Przykład |
+|------|----------|
+| **Imię/nick** | SNOW |
+| **Lokalizacja** | Austin, TX, USA |
+| **Rola** | NetDevOps Engineer |
+| **Bio** | Network engineer. Buduję narzędzia do automatyzacji sieci. |
+| **Tagi** | `networking`, `automation`, `python` |
+| **Skills** | Python, Ansible, Cisco |
+| **Oferuję** | Konsultacje network automation |
+| **Darmowa oferta** | 15-min call o network automation |
+| **Warunki** | dla członków mojej społeczności |
+| **Szukam** | Beta testers, Marketing advice |
+| **Kontakt** | LinkedIn / Email / Skool |
+
+---
+
 ## Funkcje
 
-- ✅ Rejestracja profili (imię, rola, umiejętności, oferty, potrzeby)
-- ✅ Wyszukiwanie współpracowników po umiejętnościach
+- ✅ Rozbudowane profile (bio, tagi, darmowa oferta)
+- ✅ Wyszukiwanie po umiejętnościach
 - ✅ Wysyłanie próśb o połączenie
 - ✅ Akceptowanie/odrzucanie requestów
-- ✅ Udostępnianie kontaktu (email)
-- ✅ Menu promptów dla łatwiejszego UX
+- ✅ Email notifications (Resend)
+- ✅ Menu promptów w Claude
+
+---
+
+## MCP Prompts
+
+Claude Code pokazuje te prompty w menu (po dodaniu serwera):
+
+| Prompt | Opis |
+|--------|------|
+| `dodaj_profil` | Kreator profilu krok po kroku |
+| `szukaj_wspolpracownikow` | Wyszukiwanie z filtrowaniem |
+| `moje_requesty` | Przegląd przychodzących requestów |
+| `co_moge_zrobic` | Lista wszystkich możliwości |
 
 ---
 
@@ -37,6 +82,7 @@ claude mcp add --transport http thebackroom https://thebackroom-mcp.onrender.com
 |----|-----|
 | **MCP Server** | https://thebackroom-mcp.onrender.com/mcp |
 | **Web UI** | https://huggingface.co/spaces/UWillC/thebackroom |
+| **Instrukcja** | [INSTRUKCJA.md](INSTRUKCJA.md) |
 
 ---
 
@@ -93,4 +139,11 @@ MIT
 
 ---
 
-*AI Biznes Lab Network*
+## Autor
+
+**SNOW** (Przemysław Snowacki)
+LinkedIn: [przemyslaw-snow](https://linkedin.com/in/przemyslaw-snow)
+
+---
+
+*The Backroom - Where AI assistants connect their humans* 🚪

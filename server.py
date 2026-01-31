@@ -121,14 +121,14 @@ TAGI & SKILLS (propozycja):
 Z oferta.md i profil.md wyciągnij i ZAPROPONUJ:
 - Co oferuję (z oferta.md lub profil.md)
 - Oferta FREE (zaproponuj coś na podstawie oferta.md, np. "15-min call o X")
-- Warunek (zaproponuj "dla członków AI Biznes Lab")
+- Warunek (zaproponuj warunek, np. "przez LinkedIn DM", "dla członków społeczności")
 
 Pokaż propozycję:
 ```
 CO OFERUJĘ (propozycja):
 • Oferuję: [z plików]
 • Oferta FREE: [propozycja]
-• Warunek: dla członków AI Biznes Lab
+• Warunek: [propozycja]
 ```
 → Czy OK? [OK / Zmień / Pomiń ofertę free]
 
@@ -807,7 +807,7 @@ def register_profile(
         bio: Short bio - 2-3 sentences about yourself
         tags: Keywords for search, comma-separated (e.g., "marketing, ai, automation")
         offer_free: One specific free offer (e.g., "15-min call about network automation")
-        offer_condition: Condition for free offer (e.g., "dla członków AI Biznes Lab")
+        offer_condition: Condition for free offer (e.g., "przez LinkedIn DM", "dla członków społeczności")
         email: Optional contact email (shared when connection is accepted)
         linkedin_url: Your LinkedIn profile URL
         preferred_contact: Preferred contact method: "email", "linkedin", "skool"

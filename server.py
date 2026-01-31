@@ -41,16 +41,166 @@ def dodaj_profil() -> str:
     """Dodaj swój profil do The Backroom"""
     return """Chcę dodać swój profil do The Backroom.
 
-Proszę, zapytaj mnie o:
-1. Imię/nick
-2. Rola zawodowa (np. "Marketing Manager", "Developer")
-3. Umiejętności (rozdzielone przecinkami)
-4. Co oferuję innym (rozdzielone przecinkami)
-5. Czego szukam (rozdzielone przecinkami)
-6. Email (opcjonalnie)
-7. Branża (opcjonalnie)
+## KROK 0: WCZYTAJ DANE UŻYTKOWNIKA
 
-Potem użyj narzędzia register_profile aby dodać mój profil."""
+NAJPIERW sprawdź czy istnieją pliki z danymi użytkownika:
+- `profil.md` - profil użytkownika (imię, rola, skills, doświadczenie)
+- `oferta.md` - oferta produktu/usługi (co oferuje, dla kogo)
+- `persona.md` - opcjonalnie, dla kontekstu
+
+Jeśli pliki istnieją - WCZYTAJ JE i wyciągnij:
+- Imię/nick z profil.md
+- Lokalizację z profil.md
+- Rolę zawodową z profil.md
+- Bio (skonstruuj z profil.md - kim jest, co robi)
+- Skills z profil.md
+- Tagi (wyciągnij słowa kluczowe z profil.md i oferta.md)
+- Co oferuje z oferta.md lub profil.md
+- Czego szuka z profil.md
+
+Te dane ZAPROPONUJ w każdej sekcji - użytkownik tylko zatwierdza lub modyfikuje.
+
+---
+
+WAŻNE: Przeprowadź przez rejestrację SEKCJA PO SEKCJI.
+Po każdej sekcji pokaż PROPOZYCJĘ i zapytaj:
+- OK (akceptuję propozycję)
+- Zmień (chcę zmodyfikować)
+- Pomiń (nie chcę tej sekcji)
+
+---
+
+## SEKCJA 1: PODSTAWOWE
+Z profil.md wyciągnij i ZAPROPONUJ:
+- Imię/nick
+- Lokalizacja
+
+Pokaż propozycję:
+```
+PODSTAWOWE (propozycja z Twoich plików):
+• Imię: [z profil.md]
+• Lokalizacja: [z profil.md]
+```
+→ Czy OK? [OK / Zmień / Pomiń lokalizację]
+
+Jeśli brak danych - zapytaj użytkownika.
+
+---
+
+## SEKCJA 2: KIM JESTEM
+Z profil.md wyciągnij i ZAPROPONUJ:
+- Rola zawodowa
+- Bio (skonstruuj 2-3 zdania z danych w profil.md)
+
+Pokaż propozycję:
+```
+KIM JESTEM (propozycja):
+• Rola: [z profil.md]
+• Bio: [skonstruowane z profil.md]
+```
+→ Czy OK? [OK / Zmień / Pomiń bio]
+
+---
+
+## SEKCJA 3: TAGI & UMIEJĘTNOŚCI
+Z profil.md i oferta.md wyciągnij i ZAPROPONUJ:
+- Tagi (słowa kluczowe z obu plików)
+- Umiejętności (skills z profil.md)
+
+Pokaż propozycję:
+```
+TAGI & SKILLS (propozycja):
+• Tagi: [wyciągnięte z plików]
+• Umiejętności: [z profil.md]
+```
+→ Czy OK? [OK / Zmień / Pomiń]
+
+---
+
+## SEKCJA 4: CO OFERUJĘ
+Z oferta.md i profil.md wyciągnij i ZAPROPONUJ:
+- Co oferuję (z oferta.md lub profil.md)
+- Oferta FREE (zaproponuj coś na podstawie oferta.md, np. "15-min call o X")
+- Warunek (zaproponuj "dla członków AI Biznes Lab")
+
+Pokaż propozycję:
+```
+CO OFERUJĘ (propozycja):
+• Oferuję: [z plików]
+• Oferta FREE: [propozycja]
+• Warunek: dla członków AI Biznes Lab
+```
+→ Czy OK? [OK / Zmień / Pomiń ofertę free]
+
+---
+
+## SEKCJA 5: CZEGO SZUKAM
+Z profil.md wyciągnij i ZAPROPONUJ:
+- Czego szukam (z sekcji "seeks" lub podobnej)
+
+Pokaż propozycję:
+```
+CZEGO SZUKAM (propozycja):
+• Szukam: [z profil.md]
+```
+→ Czy OK? [OK / Zmień]
+
+Jeśli brak - zapytaj użytkownika.
+
+---
+
+## SEKCJA 6: KONTAKT
+Z profil.md wyciągnij i ZAPROPONUJ:
+- Email (jeśli jest)
+- LinkedIn URL (jeśli jest)
+- Preferowany kontakt: zaproponuj "linkedin"
+
+Pokaż propozycję:
+```
+KONTAKT (propozycja):
+• Email: [z profil.md lub "nie podano"]
+• LinkedIn: [z profil.md lub "nie podano"]
+• Preferowany: linkedin
+```
+→ Czy OK? [OK / Zmień / Pomiń]
+
+---
+
+## PODSUMOWANIE
+
+Po zatwierdzeniu wszystkich sekcji, pokaż PEŁNY PROFIL w czytelnej formie.
+Podkreśl że dane zostały wyciągnięte z plików użytkownika i zatwierdzone:
+
+```
+╔══════════════════════════════════════════════╗
+║           TWÓJ PROFIL W THE BACKROOM          ║
+╠══════════════════════════════════════════════╣
+║ 👤 [Imię]                                     ║
+║ 📍 [Lokalizacja]                              ║
+║                                              ║
+║ 💼 [Rola]                                     ║
+║ [Bio]                                         ║
+║                                              ║
+║ 🏷️ Tagi: [tagi]                              ║
+║ 🛠️ Skills: [skills]                          ║
+║                                              ║
+║ 🎁 OFERUJĘ:                                   ║
+║ • [offers]                                    ║
+║                                              ║
+║ 🆓 OFERTA FREE:                               ║
+║ [offer_free]                                  ║
+║ Warunek: [offer_condition]                    ║
+║                                              ║
+║ 🔍 SZUKAM:                                    ║
+║ • [seeks]                                     ║
+║                                              ║
+║ 📧 Kontakt: [preferred_contact]               ║
+╚══════════════════════════════════════════════╝
+```
+
+→ **Publikujesz ten profil?** [TAK / NIE / ZMIEŃ]
+
+Jeśli TAK - użyj narzędzia register_profile z zebranymi danymi."""
 
 
 @mcp.prompt()
@@ -177,14 +327,42 @@ def list_profiles() -> dict:
 
 @mcp.tool
 def get_profile(profile_id: str) -> dict:
-    """Get detailed profile by ID."""
+    """Get detailed profile by ID with formatted display."""
     if not get_supabase():
         return {"error": "Database not connected."}
 
     try:
         response = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
         if response.data:
-            return {"found": True, "profile": response.data[0]}
+            p = response.data[0]
+
+            # Build formatted display
+            profile_display = f"""
+╔══════════════════════════════════════════════╗
+║ 👤 {p.get('name', 'Unknown')}
+║ 📍 {p.get('location') or 'Nie podano'}
+║
+║ 💼 {p.get('role') or 'Nie podano'}
+║ {p.get('bio') or ''}
+║
+║ 🏷️ Tagi: {', '.join(p.get('tags') or []) or 'Nie podano'}
+║ 🛠️ Skills: {', '.join(p.get('skills') or []) or 'Nie podano'}
+║
+║ 🎁 OFERUJĘ: {', '.join(p.get('offers') or []) or 'Nie podano'}
+║
+║ 🆓 OFERTA FREE: {p.get('offer_free') or 'Nie podano'}
+║    Warunek: {p.get('offer_condition') or 'Brak'}
+║
+║ 🔍 SZUKAM: {', '.join(p.get('seeks') or []) or 'Nie podano'}
+║
+║ 📧 Kontakt: {p.get('preferred_contact') or 'Nie podano'}
+╚══════════════════════════════════════════════╝"""
+
+            return {
+                "found": True,
+                "profile": p,
+                "profile_display": profile_display
+            }
         return {"found": False, "error": f"Profile '{profile_id}' not found"}
     except Exception as e:
         return {"error": str(e)}
@@ -604,7 +782,14 @@ def register_profile(
     skills: str,
     offers: str,
     seeks: str,
+    location: str = "",
+    bio: str = "",
+    tags: str = "",
+    offer_free: str = "",
+    offer_condition: str = "",
     email: str = "",
+    linkedin_url: str = "",
+    preferred_contact: str = "",
     industry: str = ""
 ) -> dict:
     """
@@ -618,11 +803,18 @@ def register_profile(
         skills: Your skills, comma-separated (e.g., "Python, Ansible, Network Automation")
         offers: What you can offer others, comma-separated (e.g., "Python consulting, Code reviews")
         seeks: What you're looking for, comma-separated (e.g., "Beta testers, Marketing advice")
-        email: Optional contact email
-        industry: Your industries, comma-separated (e.g., "tech, networking, automation")
+        location: Your location (e.g., "Warszawa, Polska", "Austin, TX, USA")
+        bio: Short bio - 2-3 sentences about yourself
+        tags: Keywords for search, comma-separated (e.g., "marketing, ai, automation")
+        offer_free: One specific free offer (e.g., "15-min call about network automation")
+        offer_condition: Condition for free offer (e.g., "dla członków AI Biznes Lab")
+        email: Optional contact email (shared when connection is accepted)
+        linkedin_url: Your LinkedIn profile URL
+        preferred_contact: Preferred contact method: "email", "linkedin", "skool"
+        industry: Your industries, comma-separated (legacy field)
 
     Returns:
-        Confirmation with your profile ID
+        Confirmation with your profile ID and full profile preview
     """
     if not get_supabase():
         return {"error": "Database not connected. Server configuration issue."}
@@ -631,6 +823,7 @@ def register_profile(
     skills_list = [s.strip() for s in skills.split(",") if s.strip()]
     offers_list = [o.strip() for o in offers.split(",") if o.strip()]
     seeks_list = [s.strip() for s in seeks.split(",") if s.strip()]
+    tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     industry_list = [i.strip() for i in industry.split(",") if i.strip()] if industry else []
 
     # Generate ID from name (lowercase, no spaces)
@@ -641,7 +834,7 @@ def register_profile(
         existing = get_supabase().table("profiles").select("id").eq("id", profile_id).execute()
         if existing.data:
             return {
-                "error": f"Profile with ID '{profile_id}' already exists. Choose a different name or contact admin to update."
+                "error": f"Profile with ID '{profile_id}' already exists. Choose a different name or use update_my_profile to modify."
             }
     except Exception as e:
         return {"error": f"Error checking existing profile: {e}"}
@@ -655,30 +848,78 @@ def register_profile(
             "skills": skills_list,
             "offers": offers_list,
             "seeks": seeks_list,
-            "industry": industry_list,
         }
 
+        # Add optional fields if provided
+        if location:
+            profile_data["location"] = location
+        if bio:
+            profile_data["bio"] = bio
+        if tags_list:
+            profile_data["tags"] = tags_list
+        if offer_free:
+            profile_data["offer_free"] = offer_free
+        if offer_condition:
+            profile_data["offer_condition"] = offer_condition
         if email:
             profile_data["email"] = email
+        if linkedin_url:
+            profile_data["linkedin_url"] = linkedin_url
+        if preferred_contact:
+            profile_data["preferred_contact"] = preferred_contact
+        if industry_list:
+            profile_data["industry"] = industry_list
 
         response = get_supabase().table("profiles").insert(profile_data).execute()
 
         if response.data:
+            # Build profile display
+            profile_display = f"""
+╔══════════════════════════════════════════════╗
+║           PROFIL DODANY DO THE BACKROOM       ║
+╠══════════════════════════════════════════════╣
+║ 👤 {name}
+║ 📍 {location or 'Nie podano'}
+║
+║ 💼 {role}
+║ {bio or ''}
+║
+║ 🏷️ Tagi: {', '.join(tags_list) if tags_list else 'Nie podano'}
+║ 🛠️ Skills: {', '.join(skills_list)}
+║
+║ 🎁 OFERUJĘ: {', '.join(offers_list)}
+║
+║ 🆓 OFERTA FREE: {offer_free or 'Nie podano'}
+║    Warunek: {offer_condition or 'Brak'}
+║
+║ 🔍 SZUKAM: {', '.join(seeks_list)}
+║
+║ 📧 Kontakt: {preferred_contact or 'Nie podano'}
+╚══════════════════════════════════════════════╝"""
+
             return {
                 "success": True,
-                "message": f"Welcome to The Backroom, {name}!",
+                "message": f"Witaj w The Backroom, {name}!",
                 "profile_id": profile_id,
+                "profile_display": profile_display,
                 "profile": {
+                    "id": profile_id,
                     "name": name,
+                    "location": location,
                     "role": role,
+                    "bio": bio,
+                    "tags": tags_list,
                     "skills": skills_list,
                     "offers": offers_list,
-                    "seeks": seeks_list
+                    "offer_free": offer_free,
+                    "offer_condition": offer_condition,
+                    "seeks": seeks_list,
+                    "preferred_contact": preferred_contact
                 },
                 "next_steps": [
-                    "Other members can now find you when searching for collaborators",
-                    "Use 'find_collaborators' to search for people who match your needs",
-                    "Use 'request_connection' to connect with someone"
+                    "Inni członkowie mogą Cię teraz znaleźć szukając współpracowników",
+                    "Użyj 'find_collaborators' aby znaleźć ludzi pasujących do Twoich potrzeb",
+                    "Użyj 'send_connection_request' aby połączyć się z kimś"
                 ]
             }
         else:
@@ -695,7 +936,14 @@ def update_my_profile(
     skills: str = None,
     offers: str = None,
     seeks: str = None,
+    location: str = None,
+    bio: str = None,
+    tags: str = None,
+    offer_free: str = None,
+    offer_condition: str = None,
     email: str = None,
+    linkedin_url: str = None,
+    preferred_contact: str = None,
     industry: str = None
 ) -> dict:
     """
@@ -707,7 +955,14 @@ def update_my_profile(
         skills: New skills, comma-separated (optional)
         offers: New offers, comma-separated (optional)
         seeks: New seeks, comma-separated (optional)
+        location: New location (optional)
+        bio: New bio (optional)
+        tags: New tags, comma-separated (optional)
+        offer_free: New free offer (optional)
+        offer_condition: New offer condition (optional)
         email: New email (optional)
+        linkedin_url: New LinkedIn URL (optional)
+        preferred_contact: New preferred contact method (optional)
         industry: New industries, comma-separated (optional)
 
     Returns:
@@ -735,8 +990,22 @@ def update_my_profile(
         update_data["offers"] = [o.strip() for o in offers.split(",") if o.strip()]
     if seeks:
         update_data["seeks"] = [s.strip() for s in seeks.split(",") if s.strip()]
+    if location:
+        update_data["location"] = location
+    if bio:
+        update_data["bio"] = bio
+    if tags:
+        update_data["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
+    if offer_free:
+        update_data["offer_free"] = offer_free
+    if offer_condition:
+        update_data["offer_condition"] = offer_condition
     if email:
         update_data["email"] = email
+    if linkedin_url:
+        update_data["linkedin_url"] = linkedin_url
+    if preferred_contact:
+        update_data["preferred_contact"] = preferred_contact
     if industry:
         update_data["industry"] = [i.strip() for i in industry.split(",") if i.strip()]
 

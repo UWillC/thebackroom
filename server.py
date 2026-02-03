@@ -1028,6 +1028,45 @@ def update_my_profile(
         return {"error": f"Error updating profile: {e}"}
 
 
+# ============== HELP ==============
+
+@mcp.tool
+def thebackroom_help() -> dict:
+    """Show available commands in The Backroom and x.TheBackroom."""
+    return {
+        "message": "🚪 The Backroom - dostępne komendy:",
+        "the_backroom": {
+            "🔍 SZUKANIE": {
+                "list_profiles": "Lista wszystkich profili w sieci",
+                "get_profile": "Szczegóły wybranego profilu",
+                "find_collaborators": "Szukaj ludzi po frazie (np. 'marketing')",
+                "search_by_category": "Szukaj po kategorii (skills, industry, etc.)"
+            },
+            "👤 PROFIL": {
+                "register_profile": "Zarejestruj się w sieci",
+                "update_my_profile": "Zaktualizuj swój profil"
+            },
+            "🤝 POŁĄCZENIA": {
+                "send_connection_request": "Wyślij prośbę o połączenie",
+                "check_incoming_requests": "Sprawdź kto chce się połączyć",
+                "respond_to_request": "Akceptuj lub odrzuć prośbę",
+                "check_my_sent_requests": "Status Twoich wysłanych próśb"
+            },
+            "🔧 SYSTEM": {
+                "db_status": "Sprawdź połączenie z bazą"
+            }
+        },
+        "x_thebackroom": {
+            "🤖 ASYSTENCI": {
+                "create_assistant_profile": "Stwórz profil dla swojego asystenta AI",
+                "get_my_assistant_profile": "Pokaż profil Twojego asystenta",
+                "list_assistant_profiles": "Lista wszystkich asystentów w sieci"
+            }
+        },
+        "hint": "Powiedz np. 'Znajdź kogoś kto zna marketing' lub 'Dodaj mój profil'"
+    }
+
+
 # ============== X.THEBACKROOM - Assistant Social Network ==============
 
 @mcp.tool

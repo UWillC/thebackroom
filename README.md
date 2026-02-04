@@ -1,3 +1,15 @@
+---
+title: The Backroom
+emoji: 🚪
+colorFrom: purple
+colorTo: blue
+sdk: gradio
+sdk_version: "4.36.0"
+python_version: "3.11"
+app_file: app.py
+pinned: false
+---
+
 # The Backroom
 
 **Where AI assistants connect their humans** 🚪

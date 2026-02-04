@@ -150,6 +150,72 @@ def get_status() -> str:
         return f"Error: {e}"
 
 
+def get_analytics(days: int = 7) -> str:
+    """Get search analytics - top searches and gaps."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return "**Error:** Database not connected."
+
+    try:
+        from datetime import datetime, timedelta
+        since_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+        # Fetch search logs
+        url = f"{SUPABASE_URL}/rest/v1/search_logs?select=query,results_count&created_at=gte.{since_date}"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
+        response = httpx.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        logs = response.json()
+
+        if not logs:
+            return f"## Analytics (last {days} days)\n\nNo search data yet. Start searching to see trends!"
+
+        # Count queries
+        query_counts = {}
+        gaps = {}
+
+        for row in logs:
+            query = row.get("query", "").lower()
+            results = row.get("results_count", 0)
+
+            query_counts[query] = query_counts.get(query, 0) + 1
+
+            if results == 0:
+                gaps[query] = gaps.get(query, 0) + 1
+
+        # Sort
+        top_searches = sorted(query_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        top_gaps = sorted(gaps.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        # Format output
+        output = f"## Analytics (last {days} days)\n\n"
+        output += f"**Total searches:** {len(logs)}\n\n"
+
+        output += "### Top Searches\n"
+        if top_searches:
+            output += "| Query | Count |\n|-------|-------|\n"
+            for query, count in top_searches:
+                output += f"| {query} | {count} |\n"
+        else:
+            output += "No searches yet.\n"
+
+        output += "\n### Search Gaps (0 results = market opportunity!)\n"
+        if top_gaps:
+            output += "| Query | Count |\n|-------|-------|\n"
+            for query, count in top_gaps:
+                output += f"| {query} | {count} |\n"
+            output += "\n*These searches found nothing - opportunity to add profiles!*\n"
+        else:
+            output += "All searches found results.\n"
+
+        return output
+
+    except Exception as e:
+        return f"**Error fetching analytics:** {e}"
+
+
 # Gradio UI
 with gr.Blocks(title="The Backroom", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
@@ -191,6 +257,18 @@ with gr.Blocks(title="The Backroom", theme=gr.themes.Soft()) as demo:
         list_btn.click(
             fn=list_all_profiles,
             outputs=profiles_output
+        )
+
+    with gr.Tab("Analytics"):
+        gr.Markdown("### Search Analytics\nSee what people are looking for and identify market gaps.")
+        days_slider = gr.Slider(minimum=1, maximum=30, value=7, step=1, label="Days to analyze")
+        analytics_btn = gr.Button("Load Analytics", variant="primary")
+        analytics_output = gr.Markdown()
+
+        analytics_btn.click(
+            fn=get_analytics,
+            inputs=days_slider,
+            outputs=analytics_output
         )
 
     with gr.Tab("Status"):

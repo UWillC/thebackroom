@@ -529,14 +529,19 @@ def get_search_analytics(days: int = 7) -> dict:
     Args:
         days: Number of days to analyze (default: 7)
     """
+    from datetime import datetime, timedelta
+
     client = get_supabase()
     if not client:
         return {"error": "Database not connected."}
 
     try:
+        # Calculate date threshold
+        since_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
         # Top searches
         top_response = client.table("search_logs").select("query, results_count").gte(
-            "created_at", f"now() - interval '{days} days'"
+            "created_at", since_date
         ).execute()
 
         # Count queries

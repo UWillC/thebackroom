@@ -304,6 +304,23 @@ def load_profiles() -> list:
         return []
 
 
+def log_search(query: str, results_count: int, search_type: str = "general", user_id: str = None):
+    """Log search query for analytics (Faza 2)."""
+    client = get_supabase()
+    if not client:
+        return
+
+    try:
+        client.table("search_logs").insert({
+            "query": query,
+            "results_count": results_count,
+            "search_type": search_type,
+            "user_id": user_id
+        }).execute()
+    except Exception as e:
+        print(f"Error logging search: {e}")
+
+
 @mcp.tool
 def list_profiles() -> dict:
     """List all profiles in The Backroom network."""
@@ -432,6 +449,9 @@ def find_collaborators(query: str, max_results: int = 5) -> dict:
     # Sort by score descending
     matches.sort(key=lambda x: x["score"], reverse=True)
 
+    # Log search for analytics
+    log_search(query=query, results_count=len(matches), search_type="general")
+
     return {
         "query": query,
         "matches_found": len(matches),
@@ -485,12 +505,67 @@ def search_by_category(category: str, value: str) -> dict:
                 "assistant_endpoint": profile.get("assistant_endpoint")
             })
 
+    # Log search for analytics
+    log_search(query=f"{category}:{value}", results_count=len(matches), search_type="category")
+
     return {
         "category": category,
         "value": value,
         "matches_found": len(matches),
         "results": matches
     }
+
+
+@mcp.tool
+def get_search_analytics(days: int = 7) -> dict:
+    """
+    Get search analytics for The Backroom.
+
+    Shows:
+    - Top searches (most frequent queries)
+    - Search gaps (queries with 0 results - market opportunities!)
+    - Total search count
+
+    Args:
+        days: Number of days to analyze (default: 7)
+    """
+    client = get_supabase()
+    if not client:
+        return {"error": "Database not connected."}
+
+    try:
+        # Top searches
+        top_response = client.table("search_logs").select("query, results_count").gte(
+            "created_at", f"now() - interval '{days} days'"
+        ).execute()
+
+        # Count queries
+        query_counts = {}
+        gaps = {}
+
+        for row in top_response.data or []:
+            query = row.get("query", "").lower()
+            results = row.get("results_count", 0)
+
+            query_counts[query] = query_counts.get(query, 0) + 1
+
+            if results == 0:
+                gaps[query] = gaps.get(query, 0) + 1
+
+        # Sort by count
+        top_searches = sorted(query_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        top_gaps = sorted(gaps.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        return {
+            "period_days": days,
+            "total_searches": len(top_response.data or []),
+            "top_searches": [{"query": q, "count": c} for q, c in top_searches],
+            "search_gaps": [{"query": q, "count": c} for q, c in top_gaps],
+            "insight": "Search gaps = what people want but you don't have. Market opportunity!"
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to get analytics: {str(e)}"}
 
 
 @mcp.tool

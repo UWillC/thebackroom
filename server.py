@@ -574,6 +574,257 @@ def get_search_analytics(days: int = 7) -> dict:
 
 
 @mcp.tool
+def check_profile_quality(profile_id: str, save_to_profile: bool = False) -> dict:
+    """
+    AI-style evaluation of profile quality (0-100%).
+
+    Inspired by AIBL Network - distinguishes "real value" from "generic fluff".
+
+    Evaluates:
+    - bio: Is it specific? Does it have examples/numbers?
+    - skills: Are they specific or just buzzwords?
+    - offer_free: Is it clear and valuable?
+    - tags: Specific or generic?
+    - seeks: Clear and realistic?
+
+    Args:
+        profile_id: Profile ID to evaluate (e.g., "snow")
+        save_to_profile: If True, save score to profile (default: False)
+
+    Returns:
+        Quality score (0-100), grade (A-F), per-element feedback, suggestions
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    # Get profile
+    try:
+        response = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
+        if not response.data:
+            return {"error": f"Profile '{profile_id}' not found."}
+        profile = response.data[0]
+    except Exception as e:
+        return {"error": f"Error fetching profile: {e}"}
+
+    # Evaluation criteria
+    feedback = {}
+    scores = {}
+
+    # --- BIO (30% weight) ---
+    bio = profile.get("bio") or ""
+    bio_score = 0
+    bio_suggestions = []
+
+    if len(bio) >= 100:
+        bio_score += 40  # Good length
+    elif len(bio) >= 50:
+        bio_score += 20
+    else:
+        bio_suggestions.append("Rozbuduj bio do min. 100 znaków")
+
+    # Check for specifics (numbers, examples)
+    import re
+    if re.search(r'\d+', bio):  # Contains numbers
+        bio_score += 30
+    else:
+        bio_suggestions.append("Dodaj konkretne liczby (np. '10 lat doświadczenia', '50+ projektów')")
+
+    # Check for concrete words (not just buzzwords)
+    concrete_indicators = ['zbudowałem', 'stworzyłem', 'zarządzam', 'prowadzę', 'pracuję', 'built', 'created', 'manage', 'lead', 'work']
+    if any(word in bio.lower() for word in concrete_indicators):
+        bio_score += 30
+    else:
+        bio_suggestions.append("Opisz konkretnie co robisz (np. 'Zbudowałem X', 'Prowadzę Y')")
+
+    scores["bio"] = min(bio_score, 100)
+    feedback["bio"] = {
+        "score": scores["bio"],
+        "suggestions": bio_suggestions if bio_suggestions else None
+    }
+
+    # --- SKILLS (20% weight) ---
+    skills = profile.get("skills") or []
+    skills_score = 0
+    skills_suggestions = []
+
+    if len(skills) >= 3:
+        skills_score += 40
+    elif len(skills) >= 1:
+        skills_score += 20
+    else:
+        skills_suggestions.append("Dodaj min. 3 umiejętności")
+
+    # Check for specificity (not just "Python" but "Python automation")
+    generic_skills = ['python', 'javascript', 'marketing', 'sales', 'management', 'ai', 'automation']
+    specific_count = sum(1 for s in skills if len(s.split()) > 1 or s.lower() not in generic_skills)
+
+    if specific_count >= 2:
+        skills_score += 60
+    elif specific_count >= 1:
+        skills_score += 30
+    else:
+        skills_suggestions.append("Sprecyzuj umiejętności (np. 'Network automation with Ansible' zamiast 'automation')")
+
+    scores["skills"] = min(skills_score, 100)
+    feedback["skills"] = {
+        "score": scores["skills"],
+        "suggestions": skills_suggestions if skills_suggestions else None
+    }
+
+    # --- OFFER_FREE (25% weight) ---
+    offer_free = profile.get("offer_free") or ""
+    offer_score = 0
+    offer_suggestions = []
+
+    if len(offer_free) >= 20:
+        offer_score += 30
+    elif len(offer_free) > 0:
+        offer_score += 15
+    else:
+        offer_suggestions.append("Dodaj ofertę FREE (np. '15-min call o automatyzacji')")
+
+    # Check for specificity
+    if any(word in offer_free.lower() for word in ['min', 'call', 'review', 'audit', 'feedback', 'konsultacja', 'przegląd']):
+        offer_score += 40
+    else:
+        offer_suggestions.append("Określ format oferty (np. 'call', 'review', 'audit')")
+
+    # Check for condition
+    offer_condition = profile.get("offer_condition") or ""
+    if offer_condition:
+        offer_score += 30
+    else:
+        offer_suggestions.append("Dodaj warunek oferty (np. 'przez LinkedIn DM')")
+
+    scores["offer_free"] = min(offer_score, 100)
+    feedback["offer_free"] = {
+        "score": scores["offer_free"],
+        "suggestions": offer_suggestions if offer_suggestions else None
+    }
+
+    # --- TAGS (15% weight) ---
+    tags = profile.get("tags") or []
+    tags_score = 0
+    tags_suggestions = []
+
+    if len(tags) >= 5:
+        tags_score += 50
+    elif len(tags) >= 3:
+        tags_score += 30
+    elif len(tags) >= 1:
+        tags_score += 15
+    else:
+        tags_suggestions.append("Dodaj min. 5 tagów dla lepszej znajdywalności")
+
+    # Check for specific tags
+    generic_tags = ['ai', 'automation', 'business', 'tech', 'startup', 'marketing', 'sales']
+    specific_tag_count = sum(1 for t in tags if t.lower() not in generic_tags)
+
+    if specific_tag_count >= 3:
+        tags_score += 50
+    elif specific_tag_count >= 1:
+        tags_score += 25
+    else:
+        tags_suggestions.append("Dodaj bardziej specyficzne tagi (np. 'cisco-ios-xe' zamiast tylko 'networking')")
+
+    scores["tags"] = min(tags_score, 100)
+    feedback["tags"] = {
+        "score": scores["tags"],
+        "suggestions": tags_suggestions if tags_suggestions else None
+    }
+
+    # --- SEEKS (10% weight) ---
+    seeks = profile.get("seeks") or []
+    seeks_score = 0
+    seeks_suggestions = []
+
+    if len(seeks) >= 2:
+        seeks_score += 50
+    elif len(seeks) >= 1:
+        seeks_score += 25
+    else:
+        seeks_suggestions.append("Określ czego szukasz (min. 2 rzeczy)")
+
+    # Check for specificity
+    specific_seeks = sum(1 for s in seeks if len(s.split()) > 2)
+    if specific_seeks >= 1:
+        seeks_score += 50
+    else:
+        seeks_suggestions.append("Sprecyzuj czego szukasz (np. 'Beta testerzy dla narzędzia do automatyzacji' zamiast 'Beta testers')")
+
+    scores["seeks"] = min(seeks_score, 100)
+    feedback["seeks"] = {
+        "score": scores["seeks"],
+        "suggestions": seeks_suggestions if seeks_suggestions else None
+    }
+
+    # --- CALCULATE TOTAL SCORE ---
+    weights = {"bio": 0.30, "skills": 0.20, "offer_free": 0.25, "tags": 0.15, "seeks": 0.10}
+    total_score = int(sum(scores[k] * weights[k] for k in scores))
+
+    # Grade
+    if total_score >= 90:
+        grade = "A"
+        grade_label = "Excellent - serio wartość!"
+    elif total_score >= 75:
+        grade = "B"
+        grade_label = "Good - solidny profil"
+    elif total_score >= 60:
+        grade = "C"
+        grade_label = "Average - można poprawić"
+    elif total_score >= 40:
+        grade = "D"
+        grade_label = "Below average - wymaga pracy"
+    else:
+        grade = "F"
+        grade_label = "Poor - ogólniki, brak wartości"
+
+    # Overall suggestion
+    weakest = min(scores, key=scores.get)
+    overall_suggestion = f"Zacznij od poprawy: {weakest.upper()}"
+
+    # Collect all suggestions
+    all_suggestions = []
+    for key, fb in feedback.items():
+        if fb["suggestions"]:
+            all_suggestions.extend(fb["suggestions"])
+
+    result = {
+        "profile_id": profile_id,
+        "quality_score": total_score,
+        "grade": grade,
+        "grade_label": grade_label,
+        "feedback": feedback,
+        "overall_suggestion": overall_suggestion,
+        "top_3_improvements": all_suggestions[:3] if all_suggestions else ["Profil wygląda dobrze!"],
+        "interpretation": {
+            "90-100": "A - Serio wartość, konkretny, wiarygodny",
+            "75-89": "B - Dobry profil, drobne poprawki",
+            "60-74": "C - Przeciętny, wymaga dopracowania",
+            "40-59": "D - Słaby, dużo ogólników",
+            "0-39": "F - Handlowe pierdololo, brak wartości"
+        }
+    }
+
+    # Save to profile if requested
+    if save_to_profile:
+        try:
+            from datetime import datetime
+            update_data = {
+                "quality_score": total_score,
+                "quality_feedback": str(all_suggestions[:3]),
+                "quality_checked_at": datetime.utcnow().isoformat()
+            }
+            get_supabase().table("profiles").update(update_data).eq("id", profile_id).execute()
+            result["saved_to_profile"] = True
+        except Exception as e:
+            result["saved_to_profile"] = False
+            result["save_error"] = str(e)
+
+    return result
+
+
+@mcp.tool
 def send_connection_request(from_user_id: str, to_user_id: str, message: str, reason: str = "") -> dict:
     """
     Send a connection request to another user in The Backroom.
@@ -1124,13 +1375,17 @@ def thebackroom_help() -> dict:
             },
             "👤 PROFIL": {
                 "register_profile": "Zarejestruj się w sieci",
-                "update_my_profile": "Zaktualizuj swój profil"
+                "update_my_profile": "Zaktualizuj swój profil",
+                "check_profile_quality": "Oceń jakość profilu (0-100%)"
             },
             "🤝 POŁĄCZENIA": {
                 "send_connection_request": "Wyślij prośbę o połączenie",
                 "check_incoming_requests": "Sprawdź kto chce się połączyć",
                 "respond_to_request": "Akceptuj lub odrzuć prośbę",
                 "check_my_sent_requests": "Status Twoich wysłanych próśb"
+            },
+            "📊 ANALYTICS": {
+                "get_search_analytics": "Top wyszukiwania i luki rynkowe"
             },
             "🔧 SYSTEM": {
                 "db_status": "Sprawdź połączenie z bazą"

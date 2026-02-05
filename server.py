@@ -1359,6 +1359,160 @@ def update_my_profile(
         return {"error": f"Error updating profile: {e}"}
 
 
+# ============== OFFERS (Multiple per profile) ==============
+
+@mcp.tool
+def add_offer(
+    profile_id: str,
+    title: str,
+    offer_type: str = "free",
+    description: str = "",
+    condition: str = "",
+    link: str = ""
+) -> dict:
+    """
+    Add a new offer to your profile.
+
+    Allows multiple offers per profile (free consultations, resources, etc.)
+
+    Args:
+        profile_id: Your profile ID (e.g., "snow")
+        title: Short title (e.g., "15-min call o automatyzacji")
+        offer_type: Type of offer: "free", "paid", "intro" (default: "free")
+        description: Longer description (optional)
+        condition: Condition to claim (e.g., "przez LinkedIn DM")
+        link: Optional link (e.g., calendly, gumroad)
+
+    Returns:
+        Confirmation with offer ID
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    # Verify profile exists
+    try:
+        profile = get_supabase().table("profiles").select("id, name").eq("id", profile_id).execute()
+        if not profile.data:
+            return {"error": f"Profile '{profile_id}' not found. Register first."}
+    except Exception as e:
+        return {"error": f"Error checking profile: {e}"}
+
+    # Add offer
+    try:
+        offer_data = {
+            "profile_id": profile_id,
+            "title": title,
+            "offer_type": offer_type,
+            "description": description,
+            "condition": condition,
+            "link": link,
+            "is_active": True
+        }
+
+        response = get_supabase().table("profile_offers").insert(offer_data).execute()
+
+        if response.data:
+            offer = response.data[0]
+            return {
+                "success": True,
+                "message": f"Offer added: {title}",
+                "offer_id": offer["id"],
+                "offer": {
+                    "id": offer["id"],
+                    "title": title,
+                    "type": offer_type,
+                    "condition": condition or "Brak"
+                }
+            }
+        else:
+            return {"error": "Failed to add offer."}
+
+    except Exception as e:
+        return {"error": f"Error adding offer: {e}"}
+
+
+@mcp.tool
+def list_my_offers(profile_id: str) -> dict:
+    """
+    List all offers for a profile.
+
+    Args:
+        profile_id: Profile ID (e.g., "snow")
+
+    Returns:
+        List of active offers
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        response = get_supabase().table("profile_offers").select("*").eq(
+            "profile_id", profile_id
+        ).eq("is_active", True).execute()
+
+        offers = response.data or []
+
+        if not offers:
+            return {
+                "profile_id": profile_id,
+                "offers_count": 0,
+                "message": "No offers yet. Use add_offer to create one.",
+                "offers": []
+            }
+
+        return {
+            "profile_id": profile_id,
+            "offers_count": len(offers),
+            "offers": [
+                {
+                    "id": o["id"],
+                    "title": o["title"],
+                    "type": o["offer_type"],
+                    "description": o["description"],
+                    "condition": o["condition"],
+                    "link": o["link"]
+                }
+                for o in offers
+            ]
+        }
+
+    except Exception as e:
+        return {"error": f"Error listing offers: {e}"}
+
+
+@mcp.tool
+def remove_offer(offer_id: str) -> dict:
+    """
+    Remove (deactivate) an offer.
+
+    Args:
+        offer_id: The offer UUID to remove
+
+    Returns:
+        Confirmation
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        # Soft delete - set is_active to false
+        response = get_supabase().table("profile_offers").update({
+            "is_active": False
+        }).eq("id", offer_id).execute()
+
+        if response.data:
+            return {
+                "success": True,
+                "message": f"Offer {offer_id} removed.",
+                "offer_id": offer_id
+            }
+        else:
+            return {"error": f"Offer '{offer_id}' not found."}
+
+    except Exception as e:
+        return {"error": f"Error removing offer: {e}"}
+
+
 # ============== HELP ==============
 
 @mcp.tool
@@ -1377,6 +1531,11 @@ def thebackroom_help() -> dict:
                 "register_profile": "Zarejestruj się w sieci",
                 "update_my_profile": "Zaktualizuj swój profil",
                 "check_profile_quality": "Oceń jakość profilu (0-100%)"
+            },
+            "🎁 OFERTY": {
+                "add_offer": "Dodaj nową ofertę (free/paid/intro)",
+                "list_my_offers": "Lista Twoich ofert",
+                "remove_offer": "Usuń ofertę"
             },
             "🤝 POŁĄCZENIA": {
                 "send_connection_request": "Wyślij prośbę o połączenie",

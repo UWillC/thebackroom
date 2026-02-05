@@ -348,6 +348,75 @@ def log_search(query: str, results_count: int, search_type: str = "general", use
         print(f"Error logging search: {e}")
 
 
+# ============== RATE LIMITING ==============
+
+# Limits
+RATE_LIMITS = {
+    "connection_request": {"max": 10, "window_hours": 24},
+    "post": {"max": 5, "window_hours": 24},
+    "search": {"max": 50, "window_hours": 1}
+}
+
+
+def check_rate_limit(user_id: str, action_type: str) -> dict:
+    """
+    Check and log rate limit for an action.
+
+    Returns:
+        {"allowed": True/False, "current": N, "max": M, "remaining": R}
+    """
+    client = get_supabase()
+    if not client:
+        # If DB not connected, allow (fail-open for now)
+        return {"allowed": True, "error": "DB not connected, rate limit skipped"}
+
+    limits = RATE_LIMITS.get(action_type)
+    if not limits:
+        return {"allowed": True, "error": f"Unknown action type: {action_type}"}
+
+    try:
+        # Call the SQL function
+        response = client.rpc("check_and_log_rate_limit", {
+            "p_user_id": user_id,
+            "p_action_type": action_type,
+            "p_max_count": limits["max"],
+            "p_window_hours": limits["window_hours"]
+        }).execute()
+
+        if response.data:
+            result = response.data
+            return {
+                "allowed": result.get("allowed", True),
+                "current": result.get("current_count", 0),
+                "max": result.get("max_count", limits["max"]),
+                "remaining": result.get("remaining", limits["max"]),
+                "window_hours": result.get("window_hours", limits["window_hours"])
+            }
+        else:
+            return {"allowed": True, "error": "No response from rate limit check"}
+
+    except Exception as e:
+        print(f"Rate limit check error: {e}")
+        # Fail-open: if rate limit check fails, allow the action
+        return {"allowed": True, "error": str(e)}
+
+
+def get_rate_limit_status(user_id: str) -> dict:
+    """Get current rate limit status for all actions."""
+    client = get_supabase()
+    if not client:
+        return {"error": "Database not connected"}
+
+    try:
+        response = client.rpc("get_user_rate_limit_status", {
+            "p_user_id": user_id
+        }).execute()
+
+        return response.data if response.data else {"error": "No data returned"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @mcp.tool
 def list_profiles() -> dict:
     """List all profiles in The Backroom network."""
@@ -413,7 +482,7 @@ def get_profile(profile_id: str) -> dict:
 
 
 @mcp.tool
-def find_collaborators(query: str, max_results: int = 5) -> dict:
+def find_collaborators(query: str, max_results: int = 5, user_id: str = "") -> dict:
     """
     Search for collaborators matching the query.
 
@@ -421,9 +490,25 @@ def find_collaborators(query: str, max_results: int = 5) -> dict:
     - "looking for someone who knows Python"
     - "need marketing advice"
     - "seeking co-founder with tech skills"
+
+    Args:
+        query: Search query
+        max_results: Maximum results to return (default: 5)
+        user_id: Optional user ID for rate limiting (default: "anonymous")
     """
     if not get_supabase():
         return {"error": "Database not connected. Set SUPABASE_URL and SUPABASE_KEY."}
+
+    # Check rate limit for search
+    search_user = user_id or "anonymous"
+    rate_check = check_rate_limit(search_user, "search")
+    if not rate_check.get("allowed", True):
+        return {
+            "error": "Rate limit exceeded.",
+            "message": f"Too many searches ({rate_check['current']}) in the last hour. Max: {rate_check['max']}/hour.",
+            "remaining": 0,
+            "retry_after": "Try again in an hour."
+        }
 
     profiles = load_profiles()
     query_lower = query.lower()
@@ -487,7 +572,7 @@ def find_collaborators(query: str, max_results: int = 5) -> dict:
 
 
 @mcp.tool
-def search_by_category(category: str, value: str) -> dict:
+def search_by_category(category: str, value: str, user_id: str = "") -> dict:
     """
     Search profiles by specific category.
 
@@ -497,9 +582,25 @@ def search_by_category(category: str, value: str) -> dict:
     - category="industry", value="e-commerce"
     - category="skills", value="python"
     - category="seeking", value="co-founder"
+
+    Args:
+        category: Category to search (industry, skills, seeking, offering)
+        value: Value to search for
+        user_id: Optional user ID for rate limiting (default: "anonymous")
     """
     if not get_supabase():
         return {"error": "Database not connected."}
+
+    # Check rate limit for search
+    search_user = user_id or "anonymous"
+    rate_check = check_rate_limit(search_user, "search")
+    if not rate_check.get("allowed", True):
+        return {
+            "error": "Rate limit exceeded.",
+            "message": f"Too many searches ({rate_check['current']}) in the last hour. Max: {rate_check['max']}/hour.",
+            "remaining": 0,
+            "retry_after": "Try again in an hour."
+        }
 
     profiles = load_profiles()
     value_lower = value.lower()
@@ -868,6 +969,16 @@ def send_connection_request(from_user_id: str, to_user_id: str, message: str, re
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # Check rate limit
+    rate_check = check_rate_limit(from_user_id, "connection_request")
+    if not rate_check.get("allowed", True):
+        return {
+            "error": "Rate limit exceeded.",
+            "message": f"You've sent {rate_check['current']} connection requests in the last {rate_check['window_hours']} hours. Max: {rate_check['max']}/day.",
+            "remaining": 0,
+            "retry_after": "Try again tomorrow."
+        }
+
     try:
         # Verify both users exist
         from_user = get_supabase().table("profiles").select("id, name").eq("id", from_user_id).execute()
@@ -1131,6 +1242,42 @@ def db_status() -> dict:
         }
     except Exception as e:
         return {"connected": False, "error": str(e)}
+
+
+@mcp.tool
+def check_my_rate_limits(user_id: str) -> dict:
+    """
+    Check your current rate limit status.
+
+    Shows how many actions you have left for:
+    - Connection requests (10/day)
+    - Posts (5/day per assistant)
+    - Searches (50/hour)
+
+    Args:
+        user_id: Your profile ID (e.g., "snow")
+
+    Returns:
+        Current rate limit status for all actions
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    status = get_rate_limit_status(user_id)
+
+    if "error" in status:
+        return status
+
+    return {
+        "user_id": user_id,
+        "rate_limits": status,
+        "message": "Rate limits reset automatically after the time window expires.",
+        "limits_info": {
+            "connection_requests": "10 per 24 hours",
+            "posts": "5 per 24 hours (per assistant)",
+            "searches": "50 per hour"
+        }
+    }
 
 
 @mcp.tool
@@ -1574,7 +1721,8 @@ def thebackroom_help() -> dict:
                 "get_search_analytics": "Top wyszukiwania i luki rynkowe"
             },
             "🔧 SYSTEM": {
-                "db_status": "Sprawdź połączenie z bazą"
+                "db_status": "Sprawdź połączenie z bazą",
+                "check_my_rate_limits": "Sprawdź limity akcji (connection requests, posts, searches)"
             }
         },
         "x_thebackroom": {
@@ -1810,6 +1958,16 @@ def draft_post(
     """
     if not get_supabase():
         return {"error": "Database not connected."}
+
+    # Check rate limit (using assistant_id for post limits)
+    rate_check = check_rate_limit(assistant_id, "post")
+    if not rate_check.get("allowed", True):
+        return {
+            "error": "Rate limit exceeded.",
+            "message": f"This assistant has created {rate_check['current']} posts in the last {rate_check['window_hours']} hours. Max: {rate_check['max']}/day.",
+            "remaining": 0,
+            "retry_after": "Try again tomorrow."
+        }
 
     # Validate content length
     if len(content) > 500:

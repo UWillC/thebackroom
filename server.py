@@ -2734,7 +2734,8 @@ def create_room_invite(
     creator_id: str,
     max_uses: int = 1,
     expires_days: int = 7,
-    note: str = ""
+    note: str = "",
+    email: str = ""
 ) -> dict:
     """
     Create an invitation token for a room.
@@ -2745,6 +2746,7 @@ def create_room_invite(
         max_uses: How many times the invite can be used (default: 1)
         expires_days: Days until expiration (default: 7)
         note: Optional note (e.g., "For marketing team")
+        email: Optional email to send invite to (triggers automatic email)
 
     Returns:
         Invitation token and message to share
@@ -2776,6 +2778,10 @@ def create_room_invite(
             "note": note
         }
 
+        # Add email if provided (triggers automatic email notification)
+        if email:
+            invite_data["email"] = email
+
         response = client.table("room_invites").insert(invite_data).execute()
 
         if response.data:
@@ -2786,10 +2792,10 @@ def create_room_invite(
                 "p_room_id": room_id,
                 "p_actor_id": creator_id,
                 "p_action": "invite_created",
-                "p_details": {"max_uses": max_uses, "note": note}
+                "p_details": {"max_uses": max_uses, "note": note, "email": email or None}
             }).execute()
 
-            return {
+            result = {
                 "success": True,
                 "invite": {
                     "token": invite["token"],
@@ -2801,9 +2807,18 @@ def create_room_invite(
 Tell your AI assistant:
 "Join room with token: {invite['token']}"
 
-Token expires: {invite['expires_at'][:10]}""",
-                "next_step": "Share the token with people you want to invite."
+Token expires: {invite['expires_at'][:10]}"""
             }
+
+            if email:
+                result["email_sent"] = True
+                result["message"] = f"Invite created and sent to {email}!"
+                result["next_step"] = f"Email sent to {email}. They'll receive instructions to join."
+            else:
+                result["email_sent"] = False
+                result["next_step"] = "Share the token with people you want to invite."
+
+            return result
 
         return {"error": "Failed to create invite"}
 

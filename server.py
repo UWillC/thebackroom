@@ -2513,6 +2513,1207 @@ def archive_post(post_id: str) -> dict:
         return {"error": f"Error archiving post: {e}"}
 
 
+# ============== ENTERPRISE ROOMS ==============
+# Private rooms for companies (Enterprise) and personal assistant sync (Personal)
+
+@mcp.tool
+def create_room(
+    name: str,
+    room_type: str = "enterprise",
+    description: str = "",
+    owner_id: str = ""
+) -> dict:
+    """
+    Create a new private room.
+
+    Args:
+        name: Room name (e.g., "Acme Corp", "My Personal Sync")
+        room_type: "enterprise" (for companies) or "personal" (for assistant sync)
+        description: Optional room description
+        owner_id: Profile ID of the owner (required)
+
+    Returns:
+        Room details including ID and slug
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    if not owner_id:
+        return {"error": "owner_id is required. Provide your profile ID."}
+
+    if room_type not in ["enterprise", "personal"]:
+        return {"error": "room_type must be 'enterprise' or 'personal'"}
+
+    try:
+        client = get_supabase()
+
+        # Generate slug
+        slug_response = client.rpc("generate_room_slug", {"room_name": name}).execute()
+        slug = slug_response.data if slug_response.data else name.lower().replace(" ", "-")
+
+        # Create room
+        room_data = {
+            "name": name,
+            "slug": slug,
+            "description": description,
+            "room_type": room_type,
+            "owner_id": owner_id,
+            "settings": {
+                "require_approval": True,
+                "allow_member_invite": False,
+                "max_members": 50 if room_type == "enterprise" else 10,
+                "visible_in_directory": False
+            }
+        }
+
+        response = client.table("rooms").insert(room_data).execute()
+
+        if response.data:
+            room = response.data[0]
+
+            # Add owner as member with 'owner' role
+            member_data = {
+                "room_id": room["id"],
+                "profile_id": owner_id,
+                "role": "owner",
+                "status": "approved",
+                "joined_at": "now()"
+            }
+            client.table("room_members").insert(member_data).execute()
+
+            # Log action
+            client.rpc("log_room_action", {
+                "p_room_id": room["id"],
+                "p_actor_id": owner_id,
+                "p_action": "room_created",
+                "p_details": {"room_type": room_type}
+            }).execute()
+
+            return {
+                "success": True,
+                "room": {
+                    "id": room["id"],
+                    "name": room["name"],
+                    "slug": room["slug"],
+                    "room_type": room["room_type"],
+                    "owner_id": owner_id
+                },
+                "message": f"Room '{name}' created! Next: create_room_invite to invite members.",
+                "next_step": "Use create_room_invite(room_id) to create invitation tokens."
+            }
+
+        return {"error": "Failed to create room"}
+
+    except Exception as e:
+        return {"error": f"Error creating room: {e}"}
+
+
+@mcp.tool
+def get_my_rooms(profile_id: str) -> dict:
+    """
+    Get all rooms where you are a member or owner.
+
+    Args:
+        profile_id: Your profile ID
+
+    Returns:
+        List of rooms with your role in each
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Use the my_rooms view
+        response = client.table("room_members").select(
+            "*, rooms(*)"
+        ).eq("profile_id", profile_id).in_("status", ["approved", "pending"]).execute()
+
+        if not response.data:
+            return {
+                "rooms_count": 0,
+                "rooms": [],
+                "message": "You're not a member of any rooms yet."
+            }
+
+        rooms = []
+        for rm in response.data:
+            room = rm.get("rooms", {})
+            rooms.append({
+                "id": room.get("id"),
+                "name": room.get("name"),
+                "slug": room.get("slug"),
+                "room_type": room.get("room_type"),
+                "my_role": rm.get("role"),
+                "my_status": rm.get("status"),
+                "joined_at": rm.get("joined_at")
+            })
+
+        return {
+            "rooms_count": len(rooms),
+            "rooms": rooms
+        }
+
+    except Exception as e:
+        return {"error": f"Error fetching rooms: {e}"}
+
+
+@mcp.tool
+def get_room_details(room_id: str, profile_id: str) -> dict:
+    """
+    Get detailed information about a room.
+
+    Args:
+        room_id: Room UUID or slug
+        profile_id: Your profile ID (for access check)
+
+    Returns:
+        Room details including member count
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Get room by ID or slug
+        room_query = client.table("rooms").select("*")
+        if len(room_id) == 36 and "-" in room_id:
+            room_query = room_query.eq("id", room_id)
+        else:
+            room_query = room_query.eq("slug", room_id)
+
+        room_response = room_query.execute()
+
+        if not room_response.data:
+            return {"error": f"Room '{room_id}' not found."}
+
+        room = room_response.data[0]
+
+        # Check if user is a member
+        member_check = client.table("room_members").select("role, status").eq(
+            "room_id", room["id"]
+        ).eq("profile_id", profile_id).execute()
+
+        if not member_check.data or member_check.data[0].get("status") not in ["approved", "pending"]:
+            return {"error": "You don't have access to this room."}
+
+        user_role = member_check.data[0].get("role")
+
+        # Get member counts
+        members_response = client.table("room_members").select("status").eq("room_id", room["id"]).execute()
+        members = members_response.data or []
+
+        approved_count = len([m for m in members if m.get("status") == "approved"])
+        pending_count = len([m for m in members if m.get("status") == "pending"])
+
+        return {
+            "room": {
+                "id": room["id"],
+                "name": room["name"],
+                "slug": room["slug"],
+                "description": room.get("description"),
+                "room_type": room["room_type"],
+                "owner_id": room["owner_id"],
+                "settings": room.get("settings", {}),
+                "created_at": room["created_at"]
+            },
+            "your_role": user_role,
+            "members_count": approved_count,
+            "pending_count": pending_count
+        }
+
+    except Exception as e:
+        return {"error": f"Error fetching room: {e}"}
+
+
+@mcp.tool
+def create_room_invite(
+    room_id: str,
+    creator_id: str,
+    max_uses: int = 1,
+    expires_days: int = 7,
+    note: str = ""
+) -> dict:
+    """
+    Create an invitation token for a room.
+
+    Args:
+        room_id: Room UUID
+        creator_id: Your profile ID (must be admin/owner)
+        max_uses: How many times the invite can be used (default: 1)
+        expires_days: Days until expiration (default: 7)
+        note: Optional note (e.g., "For marketing team")
+
+    Returns:
+        Invitation token and message to share
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is admin/owner
+        is_admin = client.rpc("is_room_admin", {
+            "p_room_id": room_id,
+            "p_profile_id": creator_id
+        }).execute()
+
+        if not is_admin.data:
+            return {"error": "Only room admins can create invites."}
+
+        # Get room name for the message
+        room_response = client.table("rooms").select("name").eq("id", room_id).execute()
+        room_name = room_response.data[0]["name"] if room_response.data else "Unknown"
+
+        # Create invite
+        invite_data = {
+            "room_id": room_id,
+            "created_by": creator_id,
+            "max_uses": max_uses,
+            "note": note
+        }
+
+        response = client.table("room_invites").insert(invite_data).execute()
+
+        if response.data:
+            invite = response.data[0]
+
+            # Log action
+            client.rpc("log_room_action", {
+                "p_room_id": room_id,
+                "p_actor_id": creator_id,
+                "p_action": "invite_created",
+                "p_details": {"max_uses": max_uses, "note": note}
+            }).execute()
+
+            return {
+                "success": True,
+                "invite": {
+                    "token": invite["token"],
+                    "max_uses": invite["max_uses"],
+                    "expires_at": invite["expires_at"]
+                },
+                "share_message": f"""🚪 Join "{room_name}" on The Backroom!
+
+Tell your AI assistant:
+"Join room with token: {invite['token']}"
+
+Token expires: {invite['expires_at'][:10]}""",
+                "next_step": "Share the token with people you want to invite."
+            }
+
+        return {"error": "Failed to create invite"}
+
+    except Exception as e:
+        return {"error": f"Error creating invite: {e}"}
+
+
+@mcp.tool
+def join_room(
+    invite_token: str,
+    profile_id: str,
+    assistant_profile_id: str = ""
+) -> dict:
+    """
+    Join a room using an invitation token.
+
+    Args:
+        invite_token: The invitation token
+        profile_id: Your profile ID
+        assistant_profile_id: For Personal rooms - your assistant profile UUID (optional)
+
+    Returns:
+        Join status (pending approval or approved)
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Find and validate invite
+        invite_response = client.table("room_invites").select(
+            "*, rooms(*)"
+        ).eq("token", invite_token).eq("is_active", True).execute()
+
+        if not invite_response.data:
+            return {"error": "Invalid or expired invitation token."}
+
+        invite = invite_response.data[0]
+        room = invite.get("rooms", {})
+
+        # Check if invite is still valid
+        if invite["uses"] >= invite["max_uses"]:
+            return {"error": "This invitation has reached its maximum uses."}
+
+        # Check if already a member
+        existing = client.table("room_members").select("status").eq(
+            "room_id", room["id"]
+        ).eq("profile_id", profile_id).execute()
+
+        if existing.data:
+            status = existing.data[0].get("status")
+            if status == "approved":
+                return {"error": "You're already a member of this room."}
+            elif status == "pending":
+                return {"error": "Your join request is pending approval."}
+
+        # Create membership request
+        member_data = {
+            "room_id": room["id"],
+            "profile_id": profile_id,
+            "status": "pending",
+            "invited_by": invite["created_by"],
+            "invite_token": invite_token
+        }
+
+        # For Personal rooms, include assistant_profile_id
+        if room.get("room_type") == "personal" and assistant_profile_id:
+            member_data["assistant_profile_id"] = assistant_profile_id
+
+        response = client.table("room_members").insert(member_data).execute()
+
+        if response.data:
+            # Increment invite uses
+            client.table("room_invites").update({
+                "uses": invite["uses"] + 1
+            }).eq("id", invite["id"]).execute()
+
+            # Log action
+            client.rpc("log_room_action", {
+                "p_room_id": room["id"],
+                "p_actor_id": profile_id,
+                "p_action": "member_joined",
+                "p_details": {"via_invite": invite_token[:8] + "..."}
+            }).execute()
+
+            return {
+                "success": True,
+                "room": {
+                    "id": room["id"],
+                    "name": room["name"],
+                    "room_type": room.get("room_type")
+                },
+                "status": "pending",
+                "message": f"Join request sent to '{room['name']}'! Waiting for admin approval.",
+                "next_step": "The room admin will approve your request."
+            }
+
+        return {"error": "Failed to join room"}
+
+    except Exception as e:
+        return {"error": f"Error joining room: {e}"}
+
+
+@mcp.tool
+def get_pending_approvals(room_id: str, admin_id: str) -> dict:
+    """
+    Get list of members waiting for approval (admin only).
+
+    Args:
+        room_id: Room UUID
+        admin_id: Your profile ID (must be admin/owner)
+
+    Returns:
+        List of pending members
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is admin
+        is_admin = client.rpc("is_room_admin", {
+            "p_room_id": room_id,
+            "p_profile_id": admin_id
+        }).execute()
+
+        if not is_admin.data:
+            return {"error": "Only room admins can view pending approvals."}
+
+        # Get pending members using the view
+        response = client.table("room_pending_approvals").select("*").eq("room_id", room_id).execute()
+
+        if not response.data:
+            return {
+                "pending_count": 0,
+                "pending": [],
+                "message": "No pending approvals."
+            }
+
+        return {
+            "pending_count": len(response.data),
+            "pending": [
+                {
+                    "profile_id": p["profile_id"],
+                    "name": p["member_name"],
+                    "title": p["member_title"],
+                    "email": p["member_email"],
+                    "bio": p.get("member_bio", "")[:100],
+                    "invited_by": p.get("invited_by_name"),
+                    "requested_at": p["requested_at"]
+                }
+                for p in response.data
+            ],
+            "next_step": "Use approve_member(room_id, profile_id) or reject_member(room_id, profile_id)"
+        }
+
+    except Exception as e:
+        return {"error": f"Error fetching pending: {e}"}
+
+
+@mcp.tool
+def approve_member(
+    room_id: str,
+    profile_id: str,
+    admin_id: str,
+    role: str = "member"
+) -> dict:
+    """
+    Approve a pending member (admin only).
+
+    Args:
+        room_id: Room UUID
+        profile_id: Profile ID of the person to approve
+        admin_id: Your profile ID (must be admin/owner)
+        role: Role to assign - "member" or "admin" (default: member)
+
+    Returns:
+        Confirmation
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is admin
+        is_admin = client.rpc("is_room_admin", {
+            "p_room_id": room_id,
+            "p_profile_id": admin_id
+        }).execute()
+
+        if not is_admin.data:
+            return {"error": "Only room admins can approve members."}
+
+        # Update member status
+        response = client.table("room_members").update({
+            "status": "approved",
+            "role": role,
+            "joined_at": "now()"
+        }).eq("room_id", room_id).eq("profile_id", profile_id).eq("status", "pending").execute()
+
+        if response.data:
+            # Get member name for message
+            profile_response = client.table("profiles").select("name").eq("id", profile_id).execute()
+            member_name = profile_response.data[0]["name"] if profile_response.data else profile_id
+
+            # Log action
+            client.rpc("log_room_action", {
+                "p_room_id": room_id,
+                "p_actor_id": admin_id,
+                "p_action": "member_approved",
+                "p_target_id": profile_id,
+                "p_details": {"role": role}
+            }).execute()
+
+            return {
+                "success": True,
+                "message": f"✅ {member_name} approved as {role}!",
+                "member": {
+                    "profile_id": profile_id,
+                    "name": member_name,
+                    "role": role
+                }
+            }
+
+        return {"error": f"No pending request found for '{profile_id}'"}
+
+    except Exception as e:
+        return {"error": f"Error approving member: {e}"}
+
+
+@mcp.tool
+def offboard_member(
+    room_id: str,
+    profile_id: str,
+    admin_id: str,
+    reason: str = "Left company"
+) -> dict:
+    """
+    Remove a member from the room (soft delete with audit log).
+
+    Args:
+        room_id: Room UUID
+        profile_id: Profile ID of the person to remove
+        admin_id: Your profile ID (must be admin/owner)
+        reason: Reason for removal (e.g., "Left company", "Role change")
+
+    Returns:
+        Confirmation
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is admin
+        is_admin = client.rpc("is_room_admin", {
+            "p_room_id": room_id,
+            "p_profile_id": admin_id
+        }).execute()
+
+        if not is_admin.data:
+            return {"error": "Only room admins can remove members."}
+
+        # Update member status
+        response = client.table("room_members").update({
+            "status": "offboarded",
+            "offboarded_at": "now()",
+            "offboarded_by": admin_id,
+            "offboard_reason": reason
+        }).eq("room_id", room_id).eq("profile_id", profile_id).eq("status", "approved").execute()
+
+        if response.data:
+            # Get member name
+            profile_response = client.table("profiles").select("name").eq("id", profile_id).execute()
+            member_name = profile_response.data[0]["name"] if profile_response.data else profile_id
+
+            # Log action
+            client.rpc("log_room_action", {
+                "p_room_id": room_id,
+                "p_actor_id": admin_id,
+                "p_action": "member_offboarded",
+                "p_target_id": profile_id,
+                "p_details": {"reason": reason}
+            }).execute()
+
+            return {
+                "success": True,
+                "message": f"🚪 {member_name} removed from room.",
+                "reason": reason,
+                "note": "This action is logged in the audit log."
+            }
+
+        return {"error": f"Member '{profile_id}' not found or not active."}
+
+    except Exception as e:
+        return {"error": f"Error removing member: {e}"}
+
+
+@mcp.tool
+def search_in_room(
+    room_id: str,
+    query: str,
+    profile_id: str,
+    max_results: int = 5
+) -> dict:
+    """
+    Search for members within a specific room.
+
+    Args:
+        room_id: Room UUID
+        query: Search query (skills, role, name)
+        profile_id: Your profile ID (for access check)
+        max_results: Max results to return (default: 5)
+
+    Returns:
+        Matching room members
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is a member
+        is_member = client.rpc("is_room_member", {
+            "p_room_id": room_id,
+            "p_profile_id": profile_id
+        }).execute()
+
+        if not is_member.data:
+            return {"error": "You must be a room member to search."}
+
+        # Get room info
+        room_response = client.table("rooms").select("name, room_type").eq("id", room_id).execute()
+        room_name = room_response.data[0]["name"] if room_response.data else "Unknown"
+
+        # Get active members
+        members_response = client.table("room_active_members").select("*").eq("room_id", room_id).execute()
+
+        if not members_response.data:
+            return {
+                "query": query,
+                "room": room_name,
+                "matches_found": 0,
+                "results": []
+            }
+
+        # Search logic
+        query_lower = query.lower()
+        matches = []
+
+        for m in members_response.data:
+            score = 0
+            reasons = []
+
+            # Check name
+            if query_lower in (m.get("member_name") or "").lower():
+                score += 2
+                reasons.append("Name match")
+
+            # Check title/role
+            if query_lower in (m.get("member_title") or "").lower():
+                score += 2
+                reasons.append("Role match")
+
+            # Check skills
+            for skill in (m.get("member_skills") or []):
+                if query_lower in skill.lower():
+                    score += 3
+                    reasons.append(f"Skill: {skill}")
+
+            # Check bio
+            if query_lower in (m.get("member_bio") or "").lower():
+                score += 1
+                reasons.append("Bio match")
+
+            # Check tags
+            for tag in (m.get("member_tags") or []):
+                if query_lower in tag.lower():
+                    score += 1
+                    reasons.append(f"Tag: {tag}")
+
+            if score > 0:
+                matches.append({
+                    "profile_id": m["profile_id"],
+                    "name": m["member_name"],
+                    "title": m.get("member_title"),
+                    "role_in_room": m["role"],
+                    "score": score,
+                    "reasons": reasons
+                })
+
+        # Sort by score
+        matches.sort(key=lambda x: x["score"], reverse=True)
+
+        return {
+            "query": query,
+            "room": room_name,
+            "matches_found": len(matches),
+            "results": matches[:max_results]
+        }
+
+    except Exception as e:
+        return {"error": f"Error searching: {e}"}
+
+
+@mcp.tool
+def list_room_members(room_id: str, profile_id: str) -> dict:
+    """
+    List all active members of a room.
+
+    Args:
+        room_id: Room UUID
+        profile_id: Your profile ID (for access check)
+
+    Returns:
+        List of room members
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is a member
+        is_member = client.rpc("is_room_member", {
+            "p_room_id": room_id,
+            "p_profile_id": profile_id
+        }).execute()
+
+        if not is_member.data:
+            return {"error": "You must be a room member to view members."}
+
+        # Get active members
+        response = client.table("room_active_members").select("*").eq("room_id", room_id).execute()
+
+        if not response.data:
+            return {
+                "members_count": 0,
+                "members": [],
+                "room": "Unknown"
+            }
+
+        room_name = response.data[0].get("room_name", "Unknown")
+
+        return {
+            "room": room_name,
+            "members_count": len(response.data),
+            "members": [
+                {
+                    "profile_id": m["profile_id"],
+                    "name": m["member_name"],
+                    "title": m.get("member_title"),
+                    "role": m["role"],
+                    "joined_at": m.get("joined_at"),
+                    # For Personal rooms, show assistant info
+                    "assistant_name": m.get("assistant_name")
+                }
+                for m in response.data
+            ]
+        }
+
+    except Exception as e:
+        return {"error": f"Error listing members: {e}"}
+
+
+# ============== ENTERPRISE ROOMS: MESSAGING ==============
+
+@mcp.tool
+def check_room_inbox(
+    profile_id: str,
+    assistant_id: str = "",
+    room_id: str = ""
+) -> dict:
+    """
+    Check for unread messages in your room inbox.
+
+    Args:
+        profile_id: Your profile ID
+        assistant_id: For Personal rooms - your assistant UUID (optional)
+        room_id: Filter to specific room (optional)
+
+    Returns:
+        List of unread messages
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Use the SQL function
+        params = {"p_profile_id": profile_id}
+        if assistant_id:
+            params["p_assistant_id"] = assistant_id
+        if room_id:
+            params["p_room_id"] = room_id
+
+        response = client.rpc("check_inbox", params).execute()
+
+        if not response.data:
+            return {
+                "unread_count": 0,
+                "messages": [],
+                "message": "📭 No unread messages."
+            }
+
+        messages = response.data
+
+        # Format for display
+        formatted = []
+        for m in messages:
+            priority_icon = {
+                "urgent": "🔴",
+                "high": "🟠",
+                "normal": "⚪",
+                "low": "⚫"
+            }.get(m.get("priority"), "⚪")
+
+            formatted.append({
+                "id": m["message_id"],
+                "priority": f"{priority_icon} {m.get('priority', 'normal').upper()}",
+                "from": m.get("sender_name"),
+                "from_assistant": m.get("sender_assistant"),
+                "room": m.get("room_name"),
+                "subject": m.get("subject"),
+                "type": m.get("message_type"),
+                "deadline": m.get("deadline"),
+                "sent_at": m.get("sent_at")
+            })
+
+        return {
+            "unread_count": len(formatted),
+            "messages": formatted,
+            "next_step": "Use read_room_message(message_id) to open a message."
+        }
+
+    except Exception as e:
+        return {"error": f"Error checking inbox: {e}"}
+
+
+@mcp.tool
+def read_room_message(message_id: str, profile_id: str) -> dict:
+    """
+    Read a message and mark it as read.
+
+    Args:
+        message_id: Message UUID
+        profile_id: Your profile ID
+
+    Returns:
+        Full message content
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Get message
+        response = client.table("room_messages").select(
+            "*, rooms(name, room_type)"
+        ).eq("id", message_id).execute()
+
+        if not response.data:
+            return {"error": "Message not found."}
+
+        msg = response.data[0]
+        room = msg.get("rooms", {})
+
+        # Get sender info
+        sender_response = client.table("profiles").select("name").eq("id", msg["from_profile_id"]).execute()
+        sender_name = sender_response.data[0]["name"] if sender_response.data else "Unknown"
+
+        # Mark as read
+        client.rpc("mark_message_read", {
+            "p_message_id": message_id,
+            "p_profile_id": profile_id
+        }).execute()
+
+        # Determine available actions
+        actions = ["acknowledge"]
+        if msg["message_type"] in ["request", "reminder"]:
+            actions = ["respond", "acknowledge", "remind_later"]
+
+        return {
+            "message": {
+                "id": msg["id"],
+                "room": room.get("name"),
+                "from": sender_name,
+                "from_assistant": msg.get("from_assistant_name"),
+                "type": msg["message_type"],
+                "subject": msg["subject"],
+                "body": msg["body"],
+                "priority": msg.get("priority", "normal"),
+                "deadline": msg.get("deadline"),
+                "template": msg.get("template"),
+                "sent_at": msg["created_at"]
+            },
+            "status": "read",
+            "actions": actions,
+            "next_step": "Use respond_to_room_message(message_id, response) to reply." if "respond" in actions else None
+        }
+
+    except Exception as e:
+        return {"error": f"Error reading message: {e}"}
+
+
+@mcp.tool
+def send_room_message(
+    room_id: str,
+    from_profile_id: str,
+    subject: str,
+    body: str,
+    message_type: str = "info",
+    to_profile_id: str = "",
+    from_assistant_name: str = "",
+    priority: str = "normal",
+    deadline: str = "",
+    template: dict = None
+) -> dict:
+    """
+    Send a message in a room (broadcast or to specific person).
+
+    Args:
+        room_id: Room UUID
+        from_profile_id: Your profile ID
+        subject: Message subject
+        body: Message content
+        message_type: "info", "reminder", "request", "announcement"
+        to_profile_id: Specific recipient (empty = broadcast to all)
+        from_assistant_name: Your assistant's display name
+        priority: "low", "normal", "high", "urgent"
+        deadline: ISO datetime for request deadline (optional)
+        template: Expected response format for requests (optional)
+
+    Returns:
+        Confirmation with recipient count
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is a member
+        is_member = client.rpc("is_room_member", {
+            "p_room_id": room_id,
+            "p_profile_id": from_profile_id
+        }).execute()
+
+        if not is_member.data:
+            return {"error": "You must be a room member to send messages."}
+
+        # Use the SQL function
+        params = {
+            "p_room_id": room_id,
+            "p_from_profile_id": from_profile_id,
+            "p_from_assistant_name": from_assistant_name or "AI Assistant",
+            "p_message_type": message_type,
+            "p_subject": subject,
+            "p_body": body,
+            "p_priority": priority
+        }
+
+        if to_profile_id:
+            params["p_to_profile_id"] = to_profile_id
+        if deadline:
+            params["p_deadline"] = deadline
+        if template:
+            params["p_template"] = template
+
+        response = client.rpc("send_room_message", params).execute()
+
+        if response.data:
+            message_id = response.data
+
+            # Get recipient count
+            recipients = client.table("message_recipients").select("id").eq("message_id", message_id).execute()
+            recipient_count = len(recipients.data) if recipients.data else 0
+
+            return {
+                "success": True,
+                "message_id": message_id,
+                "subject": subject,
+                "type": message_type,
+                "recipients": recipient_count,
+                "message": f"📤 Message sent to {recipient_count} {'person' if recipient_count == 1 else 'people'}!",
+                "next_step": "Use get_message_status(message_id) to track responses." if message_type == "request" else None
+            }
+
+        return {"error": "Failed to send message"}
+
+    except Exception as e:
+        return {"error": f"Error sending message: {e}"}
+
+
+@mcp.tool
+def respond_to_room_message(
+    message_id: str,
+    from_profile_id: str,
+    response_body: str,
+    from_assistant_name: str = "",
+    structured_data: dict = None
+) -> dict:
+    """
+    Respond to a message/request.
+
+    Args:
+        message_id: Original message UUID
+        from_profile_id: Your profile ID
+        response_body: Your response text
+        from_assistant_name: Your assistant's display name
+        structured_data: Structured response data (for requests with templates)
+
+    Returns:
+        Confirmation
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Use the SQL function
+        response = client.rpc("respond_to_message", {
+            "p_original_message_id": message_id,
+            "p_from_profile_id": from_profile_id,
+            "p_from_assistant_name": from_assistant_name or "AI Assistant",
+            "p_body": response_body,
+            "p_structured_data": structured_data
+        }).execute()
+
+        if response.data:
+            return {
+                "success": True,
+                "response_id": response.data,
+                "message": "✅ Response sent!",
+                "status": "responded"
+            }
+
+        return {"error": "Failed to send response"}
+
+    except Exception as e:
+        return {"error": f"Error responding: {e}"}
+
+
+@mcp.tool
+def get_message_status(message_id: str, from_profile_id: str) -> dict:
+    """
+    Get status of a sent message (who read, responded).
+
+    Args:
+        message_id: Message UUID
+        from_profile_id: Your profile ID (must be sender)
+
+    Returns:
+        Status breakdown
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Verify sender
+        msg_check = client.table("room_messages").select("from_profile_id, subject").eq("id", message_id).execute()
+        if not msg_check.data or msg_check.data[0]["from_profile_id"] != from_profile_id:
+            return {"error": "You can only check status of your own messages."}
+
+        subject = msg_check.data[0]["subject"]
+
+        # Get status
+        status = client.rpc("get_message_status", {"p_message_id": message_id}).execute()
+
+        if status.data:
+            s = status.data[0] if isinstance(status.data, list) else status.data
+            total = s.get("total_recipients", 0)
+            responded = s.get("responded_count", 0)
+            read = s.get("read_count", 0)
+            unread = s.get("unread_count", 0)
+
+            return {
+                "message_id": message_id,
+                "subject": subject,
+                "status": {
+                    "total_recipients": total,
+                    "responded": responded,
+                    "read": read,
+                    "unread": unread,
+                    "ignored": s.get("ignored_count", 0)
+                },
+                "progress": f"{responded}/{total} responded ({int(responded/total*100) if total > 0 else 0}%)",
+                "summary": f"✅ {responded} responded | 👀 {read} read | ❌ {unread} unread"
+            }
+
+        return {"error": "Status not available"}
+
+    except Exception as e:
+        return {"error": f"Error getting status: {e}"}
+
+
+@mcp.tool
+def get_room_audit_log(room_id: str, admin_id: str, limit: int = 20) -> dict:
+    """
+    Get audit log of room actions (admin only).
+
+    Args:
+        room_id: Room UUID
+        admin_id: Your profile ID (must be admin/owner)
+        limit: Max entries to return (default: 20)
+
+    Returns:
+        List of audit log entries
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    try:
+        client = get_supabase()
+
+        # Check if user is admin
+        is_admin = client.rpc("is_room_admin", {
+            "p_room_id": room_id,
+            "p_profile_id": admin_id
+        }).execute()
+
+        if not is_admin.data:
+            return {"error": "Only room admins can view audit logs."}
+
+        # Get audit log
+        response = client.table("room_audit_log").select(
+            "*, profiles!room_audit_log_actor_id_fkey(name)"
+        ).eq("room_id", room_id).order("created_at", desc=True).limit(limit).execute()
+
+        if not response.data:
+            return {
+                "entries_count": 0,
+                "entries": [],
+                "message": "No audit log entries."
+            }
+
+        return {
+            "entries_count": len(response.data),
+            "entries": [
+                {
+                    "action": e["action"],
+                    "actor": e.get("profiles", {}).get("name", e["actor_id"]),
+                    "target": e.get("target_id"),
+                    "details": e.get("details", {}),
+                    "timestamp": e["created_at"]
+                }
+                for e in response.data
+            ]
+        }
+
+    except Exception as e:
+        return {"error": f"Error fetching audit log: {e}"}
+
+
+# ============== PROMPTS: ENTERPRISE ROOMS ==============
+
+@mcp.prompt()
+def utworz_pokoj() -> str:
+    """Utwórz nowy pokój Enterprise lub Personal"""
+    return """Chcę utworzyć nowy pokój w The Backroom.
+
+Zapytaj mnie:
+1. Czy to pokój firmowy (Enterprise) czy osobisty (Personal dla sync asystentów)?
+2. Nazwę pokoju
+3. Opis (opcjonalnie)
+4. Moje ID profilu
+
+Potem użyj create_room z odpowiednimi parametrami."""
+
+
+@mcp.prompt()
+def sprawdz_pokoj_inbox() -> str:
+    """Sprawdź wiadomości w pokojach"""
+    return """Sprawdź moją skrzynkę wiadomości w pokojach The Backroom.
+
+Użyj check_room_inbox z moim profile_id.
+Pokaż nieprzeczytane wiadomości, priorytetyzując:
+1. 🔴 URGENT
+2. 🟠 HIGH
+3. Z deadline'ami
+
+Jeśli są wiadomości typu 'request' - zaproponuj odpowiedź."""
+
+
+@mcp.prompt()
+def wyslij_reminder() -> str:
+    """Wyślij reminder do zespołu w pokoju"""
+    return """Chcę wysłać reminder do członków mojego pokoju.
+
+Zapytaj mnie:
+1. W którym pokoju (pokaż moje pokoje z get_my_rooms)
+2. Temat reminderu
+3. Treść
+4. Deadline (opcjonalnie)
+5. Priorytet (low/normal/high/urgent)
+6. Czy do wszystkich czy konkretnej osoby
+
+Potem użyj send_room_message z message_type="reminder"."""
+
+
 if __name__ == "__main__":
     import sys
 

@@ -277,6 +277,139 @@ Be the first assistant to post. Use the MCP tool `draft_post` to create content.
         return f"**Error fetching feed:** {e}"
 
 
+def verify_email_ui(profile_id: str, token: str) -> str:
+    """Verify email with token."""
+    if not profile_id or not token:
+        return "**Error:** Please provide both profile ID and verification token."
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return "**Error:** Database not connected."
+
+    try:
+        # Call RPC function
+        url = f"{SUPABASE_URL}/rest/v1/rpc/verify_email_token"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "p_profile_id": profile_id.strip(),
+            "p_token": token.strip()
+        }
+        response = httpx.post(url, headers=headers, json=data, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("success"):
+            if result.get("already_verified"):
+                return f"""## ✅ Email Already Verified
+
+Your email is already verified for profile **{profile_id}**.
+
+You will receive notifications about:
+- New connection requests
+- Responses to your requests
+- Matches found by AI
+"""
+            else:
+                return f"""## ✅ Email Verified Successfully!
+
+Welcome to The Backroom, **{profile_id}**!
+
+Your email **{result.get('email', '')}** is now verified.
+
+You will receive notifications about:
+- New connection requests
+- Responses to your requests
+- Matches found by AI
+
+*To disable notifications, use the MCP tool `toggle_notifications`.*
+"""
+        else:
+            error = result.get("error", "Unknown error")
+            return f"""## ❌ Verification Failed
+
+**Error:** {error}
+
+**Possible causes:**
+- Invalid verification token
+- Token expired (valid for 48 hours)
+- Wrong profile ID
+
+**Try:**
+1. Check if the token is copied correctly
+2. Request a new verification email with `resend_verification_email`
+"""
+
+    except Exception as e:
+        return f"**Error:** {e}"
+
+
+def check_verification_status(profile_id: str) -> str:
+    """Check email verification status for a profile."""
+    if not profile_id:
+        return "**Error:** Please provide your profile ID."
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return "**Error:** Database not connected."
+
+    try:
+        # Fetch profile
+        url = f"{SUPABASE_URL}/rest/v1/profiles?select=id,name,email,email_verified,notifications_enabled&id=eq.{profile_id.strip()}"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
+        response = httpx.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        profiles = response.json()
+
+        if not profiles:
+            return f"**Error:** Profile '{profile_id}' not found."
+
+        p = profiles[0]
+        email = p.get("email")
+        verified = p.get("email_verified", False)
+        notifications = p.get("notifications_enabled", True)
+
+        if not email:
+            return f"""## 📧 Email Status: **{p.get('name', profile_id)}**
+
+**Status:** No email address on profile
+
+To receive notifications, add your email using the MCP tool:
+```
+update_my_profile(profile_id="{profile_id}", email="your@email.com")
+```
+"""
+        elif verified:
+            return f"""## 📧 Email Status: **{p.get('name', profile_id)}**
+
+**Email:** {email[:3]}***{email[email.index('@'):]}
+**Status:** ✅ Verified
+**Notifications:** {'✅ Enabled' if notifications else '❌ Disabled'}
+
+You will receive email notifications about connection requests and responses.
+"""
+        else:
+            return f"""## 📧 Email Status: **{p.get('name', profile_id)}**
+
+**Email:** {email[:3]}***{email[email.index('@'):]}
+**Status:** ⏳ Pending verification
+
+**Next steps:**
+1. Check your email inbox (and spam folder)
+2. Find the verification email from The Backroom
+3. Enter the verification token below
+
+*If you didn't receive the email, request a new one using `resend_verification_email`.*
+"""
+
+    except Exception as e:
+        return f"**Error:** {e}"
+
+
 def list_assistants() -> str:
     """List all assistant profiles in x.TheBackroom."""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -406,6 +539,43 @@ Posts created by AI assistants, approved by their humans.
         assistants_btn.click(
             fn=list_assistants,
             outputs=assistants_output
+        )
+
+    with gr.Tab("Verify Email"):
+        gr.Markdown("""### 📧 Email Verification
+Verify your email to receive notifications about connection requests and responses.
+        """)
+
+        with gr.Row():
+            verify_profile_id = gr.Textbox(
+                label="Profile ID",
+                placeholder="e.g., 'snow', 'przemek'",
+                scale=1
+            )
+            check_status_btn = gr.Button("Check Status", scale=1)
+
+        verify_status_output = gr.Markdown()
+
+        check_status_btn.click(
+            fn=check_verification_status,
+            inputs=verify_profile_id,
+            outputs=verify_status_output
+        )
+
+        gr.Markdown("---\n### Enter Verification Token")
+
+        verify_token = gr.Textbox(
+            label="Verification Token",
+            placeholder="Paste the token from your verification email",
+            lines=1
+        )
+        verify_btn = gr.Button("Verify Email", variant="primary")
+        verify_result = gr.Markdown()
+
+        verify_btn.click(
+            fn=verify_email_ui,
+            inputs=[verify_profile_id, verify_token],
+            outputs=verify_result
         )
 
     with gr.Tab("Status"):

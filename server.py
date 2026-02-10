@@ -65,6 +65,178 @@ MAX_SKILLS = 30
 MAX_OFFERS = 20
 
 
+# ============== PROMPT INJECTION PROTECTION ==============
+
+# Patterns that indicate prompt injection attempts
+# These are case-insensitive and checked against user inputs
+INJECTION_PATTERNS = [
+    # Direct instruction override attempts
+    r"ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?|guidelines?)",
+    r"disregard\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?)",
+    r"forget\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|context)",
+    r"override\s+(all\s+)?(previous|prior|system)\s+(instructions?|prompts?|rules?)",
+
+    # Role manipulation attempts
+    r"you\s+are\s+now\s+(a|an|the)\s+",
+    r"pretend\s+(you\s+are|to\s+be)\s+",
+    r"act\s+as\s+(if\s+you\s+are|a|an)\s+",
+    r"simulate\s+being\s+",
+    r"roleplay\s+as\s+",
+    r"from\s+now\s+on\s+you\s+(are|will)\s+",
+    r"switch\s+to\s+(\w+)\s+mode",
+
+    # System prompt extraction
+    r"(show|reveal|display|print|output|tell\s+me)\s+(your|the)\s+(system\s+)?(prompt|instructions?|rules?)",
+    r"what\s+(are|is)\s+your\s+(system\s+)?(prompt|instructions?|initial\s+prompt)",
+    r"repeat\s+(your|the)\s+(system\s+)?(prompt|instructions?)",
+    r"dump\s+(your|the)\s+(system\s+)?prompt",
+
+    # Jailbreak attempts
+    r"(DAN|STAN|DUDE|AIM)\s*mode",
+    r"jailbreak",
+    r"bypass\s+(your|the|all)\s+(restrictions?|filters?|rules?|safety)",
+    r"remove\s+(your|the|all)\s+(restrictions?|filters?|limitations?)",
+    r"disable\s+(your|the|all)\s+(restrictions?|filters?|safety)",
+    r"unlock\s+(your|the)?\s*(hidden|full)\s*(capabilities?|potential|mode)",
+
+    # Code injection patterns (for safety)
+    r"<script[^>]*>",
+    r"javascript:",
+    r"on(click|load|error|mouseover)\s*=",
+
+    # SQL injection patterns (defense in depth)
+    r";\s*(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE)\s+",
+    r"'\s*OR\s+'?1'?\s*=\s*'?1",
+    r"UNION\s+(ALL\s+)?SELECT",
+
+    # Delimiter injection
+    r"\[\[SYSTEM\]\]",
+    r"\[\[USER\]\]",
+    r"\[\[ASSISTANT\]\]",
+    r"<\|im_start\|>",
+    r"<\|im_end\|>",
+    r"###\s*(SYSTEM|USER|ASSISTANT)",
+]
+
+# Compiled regex patterns for efficiency
+COMPILED_INJECTION_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+    for pattern in INJECTION_PATTERNS
+]
+
+# Suspicious phrases (less severe, just logged)
+SUSPICIOUS_PHRASES = [
+    "ignore instructions",
+    "new instructions",
+    "system prompt",
+    "initial prompt",
+    "you must",
+    "you have to",
+    "you will now",
+    "administrator mode",
+    "developer mode",
+    "debug mode",
+    "god mode",
+    "sudo",
+    "root access",
+]
+
+
+def detect_prompt_injection(text: str) -> tuple[bool, str, list]:
+    """
+    Detect potential prompt injection attempts in text.
+
+    Args:
+        text: The text to check
+
+    Returns:
+        Tuple of (is_safe, risk_level, matched_patterns)
+        - is_safe: False if injection detected
+        - risk_level: "none", "suspicious", "blocked"
+        - matched_patterns: List of matched pattern descriptions
+    """
+    if not text:
+        return True, "none", []
+
+    text_lower = text.lower()
+    matched = []
+
+    # Check for blocking patterns (high risk)
+    for i, pattern in enumerate(COMPILED_INJECTION_PATTERNS):
+        if pattern.search(text):
+            matched.append(f"pattern_{i}")
+
+    if matched:
+        return False, "blocked", matched
+
+    # Check for suspicious phrases (lower risk, just warn)
+    suspicious = []
+    for phrase in SUSPICIOUS_PHRASES:
+        if phrase in text_lower:
+            suspicious.append(phrase)
+
+    if suspicious:
+        # Just log, don't block
+        return True, "suspicious", suspicious
+
+    return True, "none", []
+
+
+def sanitize_for_injection(text: str) -> str:
+    """
+    Sanitize text to reduce injection risk.
+
+    This is a defense-in-depth measure that:
+    1. Removes/replaces delimiter tokens
+    2. Escapes special markers
+    """
+    if not text:
+        return text
+
+    # Remove potential delimiter tokens
+    replacements = [
+        ("<|im_start|>", ""),
+        ("<|im_end|>", ""),
+        ("[[SYSTEM]]", "[SYSTEM]"),
+        ("[[USER]]", "[USER]"),
+        ("[[ASSISTANT]]", "[ASSISTANT]"),
+        ("###SYSTEM", "# SYSTEM"),
+        ("###USER", "# USER"),
+        ("###ASSISTANT", "# ASSISTANT"),
+    ]
+
+    for old, new in replacements:
+        text = text.replace(old, new)
+
+    return text
+
+
+def check_injection_and_sanitize(text: str, field_name: str = "input") -> tuple[bool, str, str]:
+    """
+    Combined check for prompt injection with sanitization.
+
+    Args:
+        text: Text to check
+        field_name: Name of the field for error messages
+
+    Returns:
+        Tuple of (is_safe, error_message, sanitized_text)
+    """
+    if not text:
+        return True, "", text
+
+    # Detect injection
+    is_safe, risk_level, matched = detect_prompt_injection(text)
+
+    if not is_safe:
+        return False, f"Potentially malicious content detected in {field_name}. This input has been blocked for security reasons.", text
+
+    # Sanitize even if safe (defense in depth)
+    sanitized = sanitize_for_injection(text)
+
+    return True, "", sanitized
+
+
 def validate_length(value: str, field_type: str, field_name: str = None) -> tuple[bool, str]:
     """
     Validate string length against limits.
@@ -139,12 +311,13 @@ def validate_uuid(uuid_str: str, field_name: str = "ID") -> tuple[bool, str]:
     return True, ""
 
 
-def sanitize_text(text: str) -> str:
+def sanitize_text(text: str, check_injection: bool = False) -> str:
     """
     Sanitize text input:
     - Strip leading/trailing whitespace
     - Escape HTML entities to prevent XSS
     - Remove null bytes and control characters
+    - Optionally sanitize injection markers
     """
     if not text:
         return text
@@ -157,6 +330,10 @@ def sanitize_text(text: str) -> str:
 
     # Escape HTML entities
     text = html.escape(text)
+
+    # Sanitize injection markers if requested
+    if check_injection:
+        text = sanitize_for_injection(text)
 
     return text
 
@@ -1253,9 +1430,19 @@ def send_connection_request(from_user_id: str, to_user_id: str, message: str, re
     if errors:
         return {"error": "Validation failed", "details": errors}
 
+    # Check for prompt injection in message content
+    is_safe, error_msg, _ = check_injection_and_sanitize(message, "message")
+    if not is_safe:
+        return {"error": error_msg}
+
+    if reason:
+        is_safe, error_msg, _ = check_injection_and_sanitize(reason, "reason")
+        if not is_safe:
+            return {"error": error_msg}
+
     # Sanitize inputs
-    message = sanitize_text(message)
-    reason = sanitize_text(reason) if reason else ""
+    message = sanitize_text(message, check_injection=True)
+    reason = sanitize_text(reason, check_injection=True) if reason else ""
 
     # Check rate limit
     rate_check = check_rate_limit(from_user_id, "connection_request")
@@ -1630,20 +1817,26 @@ def register_profile(
     if errors:
         return {"error": "Validation failed", "details": errors}
 
-    # Sanitize text inputs
-    name = sanitize_text(name)
-    role = sanitize_text(role)
-    location = sanitize_text(location) if location else ""
-    bio = sanitize_text(bio) if bio else ""
-    offer_free = sanitize_text(offer_free) if offer_free else ""
-    offer_condition = sanitize_text(offer_condition) if offer_condition else ""
+    # Check for prompt injection in bio (primary risk field)
+    if bio:
+        is_safe, error_msg, _ = check_injection_and_sanitize(bio, "bio")
+        if not is_safe:
+            return {"error": error_msg}
 
-    # Parse comma-separated values into lists
-    skills_list = [sanitize_text(s) for s in skills.split(",") if s.strip()]
-    offers_list = [sanitize_text(o) for o in offers.split(",") if o.strip()]
-    seeks_list = [sanitize_text(s) for s in seeks.split(",") if s.strip()]
-    tags_list = [sanitize_text(t) for t in tags.split(",") if t.strip()] if tags else []
-    industry_list = [sanitize_text(i) for i in industry.split(",") if i.strip()] if industry else []
+    # Sanitize text inputs (with injection protection)
+    name = sanitize_text(name, check_injection=True)
+    role = sanitize_text(role, check_injection=True)
+    location = sanitize_text(location, check_injection=True) if location else ""
+    bio = sanitize_text(bio, check_injection=True) if bio else ""
+    offer_free = sanitize_text(offer_free, check_injection=True) if offer_free else ""
+    offer_condition = sanitize_text(offer_condition, check_injection=True) if offer_condition else ""
+
+    # Parse comma-separated values into lists (with injection protection)
+    skills_list = [sanitize_text(s, check_injection=True) for s in skills.split(",") if s.strip()]
+    offers_list = [sanitize_text(o, check_injection=True) for o in offers.split(",") if o.strip()]
+    seeks_list = [sanitize_text(s, check_injection=True) for s in seeks.split(",") if s.strip()]
+    tags_list = [sanitize_text(t, check_injection=True) for t in tags.split(",") if t.strip()] if tags else []
+    industry_list = [sanitize_text(i, check_injection=True) for i in industry.split(",") if i.strip()] if industry else []
 
     # Validate list lengths
     if len(skills_list) > MAX_SKILLS:
@@ -2356,10 +2549,21 @@ def create_assistant_profile(
     if errors:
         return {"error": "Validation failed", "details": errors}
 
-    # Sanitize inputs
-    name = sanitize_text(name)
-    bio = sanitize_text(bio) if bio else ""
-    personality = sanitize_text(personality) if personality else ""
+    # Check for prompt injection in bio/personality
+    if bio:
+        is_safe, error_msg, _ = check_injection_and_sanitize(bio, "bio")
+        if not is_safe:
+            return {"error": error_msg}
+
+    if personality:
+        is_safe, error_msg, _ = check_injection_and_sanitize(personality, "personality")
+        if not is_safe:
+            return {"error": error_msg}
+
+    # Sanitize inputs (with injection protection)
+    name = sanitize_text(name, check_injection=True)
+    bio = sanitize_text(bio, check_injection=True) if bio else ""
+    personality = sanitize_text(personality, check_injection=True) if personality else ""
 
     # Validate avatar emoji (max 10 chars to allow for compound emojis)
     if len(avatar_emoji) > 10:
@@ -2561,10 +2765,15 @@ def draft_post(
     if errors:
         return {"error": "Validation failed", "details": errors}
 
-    # Sanitize inputs
-    content = sanitize_text(content)
-    context_type = sanitize_text(context_type) if context_type else ""
-    context_ref = sanitize_text(context_ref) if context_ref else ""
+    # Check for prompt injection in content (critical - goes to feed)
+    is_safe, error_msg, _ = check_injection_and_sanitize(content, "content")
+    if not is_safe:
+        return {"error": error_msg}
+
+    # Sanitize inputs (with injection protection)
+    content = sanitize_text(content, check_injection=True)
+    context_type = sanitize_text(context_type, check_injection=True) if context_type else ""
+    context_ref = sanitize_text(context_ref, check_injection=True) if context_ref else ""
 
     # Check rate limit (using assistant_id for post limits)
     rate_check = check_rate_limit(assistant_id, "post")
@@ -3884,10 +4093,19 @@ def send_room_message(
     if priority not in valid_priorities:
         return {"error": f"Invalid priority. Must be one of: {', '.join(valid_priorities)}"}
 
-    # Sanitize inputs
-    subject = sanitize_text(subject)
-    body = sanitize_text(body)
-    from_assistant_name = sanitize_text(from_assistant_name) if from_assistant_name else ""
+    # Check for prompt injection in message content
+    is_safe, error_msg, _ = check_injection_and_sanitize(subject, "subject")
+    if not is_safe:
+        return {"error": error_msg}
+
+    is_safe, error_msg, _ = check_injection_and_sanitize(body, "body")
+    if not is_safe:
+        return {"error": error_msg}
+
+    # Sanitize inputs (with injection protection)
+    subject = sanitize_text(subject, check_injection=True)
+    body = sanitize_text(body, check_injection=True)
+    from_assistant_name = sanitize_text(from_assistant_name, check_injection=True) if from_assistant_name else ""
 
     try:
         client = get_supabase()
@@ -3978,9 +4196,14 @@ def respond_to_room_message(
     if errors:
         return {"error": "Validation failed", "details": errors}
 
-    # Sanitize inputs
-    response_body = sanitize_text(response_body)
-    from_assistant_name = sanitize_text(from_assistant_name) if from_assistant_name else ""
+    # Check for prompt injection in response
+    is_safe, error_msg, _ = check_injection_and_sanitize(response_body, "response")
+    if not is_safe:
+        return {"error": error_msg}
+
+    # Sanitize inputs (with injection protection)
+    response_body = sanitize_text(response_body, check_injection=True)
+    from_assistant_name = sanitize_text(from_assistant_name, check_injection=True) if from_assistant_name else ""
 
     try:
         client = get_supabase()

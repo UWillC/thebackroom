@@ -1305,6 +1305,110 @@ def get_search_analytics(days: int = 7) -> dict:
 
 
 @mcp.tool
+def get_connection_funnel(days: int = 30) -> dict:
+    """
+    Get connection funnel analytics.
+
+    Tracks: SENT → VIEWED → ACCEPTED → CONTACTED
+
+    Shows conversion rates at each stage to identify drop-off points.
+
+    Args:
+        days: Number of days to analyze (default: 30)
+    """
+    client = get_supabase()
+    if not client:
+        return {"error": "Database not connected."}
+
+    try:
+        # Call the SQL function
+        response = client.rpc("get_connection_funnel_stats", {
+            "p_days": days
+        }).execute()
+
+        if response.data:
+            data = response.data
+            funnel = data.get("funnel", {})
+            rates = data.get("conversion_rates", {})
+
+            # Build visual funnel
+            funnel_visual = f"""
+╔══════════════════════════════════════════════╗
+║           CONNECTION FUNNEL ({days} days)
+╠══════════════════════════════════════════════╣
+║ 📤 SENT:      {funnel.get('sent', 0):>5}  (100%)
+║      ↓ {rates.get('sent_to_viewed', 0)}%
+║ 👀 VIEWED:    {funnel.get('viewed', 0):>5}
+║      ↓ {rates.get('viewed_to_accepted', 0)}%
+║ ✅ ACCEPTED:  {funnel.get('accepted', 0):>5}
+║      ↓ {rates.get('accepted_to_contacted', 0)}%
+║ 🤝 CONTACTED: {funnel.get('contacted', 0):>5}
+╠══════════════════════════════════════════════╣
+║ 🎯 OVERALL SUCCESS: {rates.get('overall_success', 0)}%
+╚══════════════════════════════════════════════╝"""
+
+            return {
+                "period_days": days,
+                "funnel": funnel,
+                "conversion_rates": rates,
+                "funnel_visual": funnel_visual,
+                "insights": {
+                    "sent_to_viewed": "If low: people don't see requests (check notifications)",
+                    "viewed_to_accepted": "If low: requests not compelling (improve messages)",
+                    "accepted_to_contacted": "If low: people don't follow up (improve 'Co teraz?' UX)"
+                }
+            }
+        else:
+            return {
+                "message": "No funnel data yet. Start sending connection requests!",
+                "funnel": {"sent": 0, "viewed": 0, "accepted": 0, "contacted": 0}
+            }
+
+    except Exception as e:
+        # If table doesn't exist yet, return helpful message
+        if "does not exist" in str(e) or "function" in str(e).lower():
+            return {
+                "error": "Funnel metrics not set up yet.",
+                "setup": "Run connection_funnel_metrics.sql in Supabase to enable."
+            }
+        return {"error": f"Failed to get funnel stats: {str(e)}"}
+
+
+@mcp.tool
+def mark_connection_contacted(request_id: str, contact_method: str = "") -> dict:
+    """
+    Mark a connection as 'contacted' for funnel tracking.
+
+    Call this after you've actually reached out to someone you connected with.
+
+    Args:
+        request_id: The connection request UUID
+        contact_method: How you contacted them (e.g., "LinkedIn", "Email", "Call")
+    """
+    client = get_supabase()
+    if not client:
+        return {"error": "Database not connected."}
+
+    try:
+        response = client.rpc("log_connection_contacted", {
+            "p_request_id": request_id,
+            "p_contact_method": contact_method
+        }).execute()
+
+        if response.data:
+            return {
+                "success": True,
+                "message": "Marked as contacted! Great job following up.",
+                "request_id": request_id,
+                "contact_method": contact_method or "not specified"
+            }
+        return {"error": "Failed to log contact"}
+
+    except Exception as e:
+        return {"error": f"Error: {str(e)}"}
+
+
+@mcp.tool
 def check_profile_quality(profile_id: str, save_to_profile: bool = False) -> dict:
     """
     AI-style evaluation of profile quality (0-100%).
@@ -2633,10 +2737,12 @@ def thebackroom_help() -> dict:
                 "send_connection_request": "Wyślij prośbę o połączenie",
                 "check_incoming_requests": "Sprawdź przychodzące prośby",
                 "respond_to_request": "Akceptuj lub odrzuć",
-                "check_my_sent_requests": "Status wysłanych próśb"
+                "check_my_sent_requests": "Status wysłanych próśb",
+                "mark_connection_contacted": "🆕 Oznacz że skontaktowałeś się"
             },
             "📊 ANALYTICS": {
-                "get_search_analytics": "Top wyszukiwania i luki rynkowe"
+                "get_search_analytics": "Top wyszukiwania i luki rynkowe",
+                "get_connection_funnel": "🆕 Funnel: sent→viewed→accepted→contacted"
             },
             "🔧 SYSTEM": {
                 "db_status": "Sprawdź połączenie z bazą",

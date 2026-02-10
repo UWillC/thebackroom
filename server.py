@@ -3707,15 +3707,25 @@ def summarize_responses(message_id: str, from_profile_id: str) -> dict:
                 "responses": values
             }
 
+        # Build summary string
+        if aggregated_data:
+            agg_parts = []
+            for k, v in aggregated_data.items():
+                if 'total' in v:
+                    agg_parts.append(f"{k}: {v['total']}")
+                elif 'responses' in v:
+                    agg_parts.append(f"{k}: {len(v['responses'])} responses")
+            summary_text = f"📊 {len(response_list)} responses received. Aggregated: {', '.join(agg_parts)}"
+        else:
+            summary_text = f"📊 {len(response_list)} responses received. No structured data to aggregate."
+
         return {
             "message_id": message_id,
             "subject": subject,
             "total_responses": len(response_list),
             "responses": response_list,
             "aggregated": aggregated_data if aggregated_data else None,
-            "summary": f"📊 {len(response_list)} responses received. " +
-                      (f"Aggregated: {', '.join([f'{k}: {v.get(\"total\", len(v.get(\"responses\", [])))}' for k, v in aggregated_data.items()])}"
-                       if aggregated_data else "No structured data to aggregate.")
+            "summary": summary_text
         }
 
     except Exception as e:

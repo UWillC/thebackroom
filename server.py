@@ -1560,6 +1560,76 @@ def get_profile_stats(profile_id: str, days: int = 30) -> dict:
 
 
 @mcp.tool
+def send_weekly_matches_email(profile_id: str = "") -> dict:
+    """
+    Send weekly matches email to a user or all eligible users.
+
+    This is normally run automatically every Monday at 9 AM UTC,
+    but can be triggered manually for testing.
+
+    Args:
+        profile_id: Specific profile to send to, or empty for ALL eligible users
+
+    Example:
+        send_weekly_matches_email("snow") → sends to snow only
+        send_weekly_matches_email() → sends to ALL eligible users
+    """
+    client = get_supabase()
+    if not client:
+        return {"error": "Database not connected."}
+
+    try:
+        if profile_id:
+            # Send to specific user
+            response = client.rpc("send_weekly_matches_email", {
+                "p_profile_id": profile_id
+            }).execute()
+
+            if response.data:
+                result = response.data
+                if result.get("success"):
+                    return {
+                        "success": True,
+                        "message": f"Weekly matches email sent to {profile_id}!",
+                        "matches_sent": result.get("matches_sent", 0)
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "reason": result.get("reason", "unknown"),
+                        "message": {
+                            "no_email": "Profile has no email address",
+                            "email_not_verified": "Email not verified yet",
+                            "notifications_disabled": "User disabled notifications",
+                            "no_matches": "No matches found for this profile"
+                        }.get(result.get("reason"), "Could not send email")
+                    }
+            return {"error": "No response from function"}
+        else:
+            # Send to ALL eligible users
+            response = client.rpc("send_all_weekly_matches_emails").execute()
+
+            if response.data:
+                result = response.data
+                return {
+                    "success": True,
+                    "message": f"Weekly emails sent to {result.get('sent', 0)} users",
+                    "sent": result.get("sent", 0),
+                    "skipped": result.get("skipped", 0),
+                    "details": result.get("details", [])
+                }
+            return {"error": "No response from function"}
+
+    except Exception as e:
+        if "does not exist" in str(e) or "function" in str(e).lower():
+            return {
+                "error": "Weekly matches email not set up yet.",
+                "setup": "Run weekly_matches_email.sql in Supabase to enable."
+            }
+        return {"error": f"Failed to send: {str(e)}"}
+
+
+@mcp.tool
 def check_profile_quality(profile_id: str, save_to_profile: bool = False) -> dict:
     """
     AI-style evaluation of profile quality (0-100%).
@@ -2894,7 +2964,8 @@ def thebackroom_help() -> dict:
             },
             "📊 ANALYTICS": {
                 "get_search_analytics": "Top wyszukiwania i luki rynkowe",
-                "get_connection_funnel": "🆕 Funnel: sent→viewed→accepted→contacted"
+                "get_connection_funnel": "Funnel: sent→viewed→accepted→contacted",
+                "send_weekly_matches_email": "🆕 Wyślij tygodniowy email z matchami"
             },
             "🔧 SYSTEM": {
                 "db_status": "Sprawdź połączenie z bazą",

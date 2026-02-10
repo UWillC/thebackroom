@@ -778,6 +778,42 @@ def load_profiles() -> list:
         return []
 
 
+def format_profile_summary(profile: dict) -> dict:
+    """
+    Generate a 3-line profile summary for search results.
+    Returns: id, name, role, location, quality_score, summary_line
+    """
+    name = profile.get("name", "Unknown")
+    role = profile.get("role") or "Nie podano roli"
+    location = profile.get("location") or "Nie podano lokalizacji"
+    score = profile.get("quality_score")
+
+    # Build score indicator
+    if score is not None:
+        if score >= 80:
+            score_badge = f"⭐{score}%"
+        elif score >= 60:
+            score_badge = f"📊{score}%"
+        else:
+            score_badge = f"📊{score}%"
+    else:
+        score_badge = ""
+
+    # 3-line summary
+    summary = f"👤 {name} | 💼 {role} | 📍 {location}"
+    if score_badge:
+        summary += f" | {score_badge}"
+
+    return {
+        "id": profile.get("id"),
+        "name": name,
+        "role": role,
+        "location": location,
+        "quality_score": score,
+        "summary": summary
+    }
+
+
 def log_search(query: str, results_count: int, search_type: str = "general", user_id: str = None):
     """Log search query for analytics (Faza 2)."""
     client = get_supabase()
@@ -866,22 +902,22 @@ def get_rate_limit_status(user_id: str) -> dict:
 
 @mcp.tool
 def list_profiles() -> dict:
-    """List all profiles in The Backroom network."""
+    """List all profiles in The Backroom network with 3-line summaries."""
     if not get_supabase():
         return {"error": "Database not connected. Set SUPABASE_URL and SUPABASE_KEY."}
 
     profiles = load_profiles()
+
+    # Build summaries
+    profile_list = []
+    for p in profiles:
+        summary = format_profile_summary(p)
+        summary["industry"] = p.get("industry") or []
+        profile_list.append(summary)
+
     return {
         "count": len(profiles),
-        "profiles": [
-            {
-                "id": p.get("id"),
-                "name": p.get("name"),
-                "role": p.get("role"),
-                "industry": p.get("industry") or []
-            }
-            for p in profiles
-        ]
+        "profiles": profile_list
     }
 
 
@@ -1029,17 +1065,16 @@ def find_collaborators(query: str, max_results: int = 5, user_id: str = "") -> d
             reasons.append("Role match")
 
         if score > 0:
+            summary = format_profile_summary(profile)
             matches.append({
-                "id": profile.get("id"),
-                "name": profile.get("name"),
-                "role": profile.get("role"),
-                "score": score,
+                **summary,
+                "match_score": score,
                 "reasons": reasons,
                 "assistant_endpoint": profile.get("assistant_endpoint")
             })
 
     # Sort by score descending
-    matches.sort(key=lambda x: x["score"], reverse=True)
+    matches.sort(key=lambda x: x["match_score"], reverse=True)
 
     # Log search for analytics
     log_search(query=query, results_count=len(matches), search_type="general")
@@ -1140,17 +1175,14 @@ def get_my_matches(profile_id: str, max_results: int = 5) -> dict:
             else:
                 match_type = "🔗 Podobne skills"
 
+            summary = format_profile_summary(profile)
             matches.append({
-                "id": profile.get("id"),
-                "name": profile.get("name"),
-                "role": profile.get("role"),
-                "location": profile.get("location"),
+                **summary,
                 "match_score": score,
                 "match_type": match_type,
                 "can_help_you": can_help_me[:3],  # Top 3 reasons
                 "you_can_help": i_can_help[:3],
                 "skill_overlap": skill_overlap[:3],
-                "quality_score": profile.get("quality_score"),
                 "email_verified": profile.get("email_verified", False)
             })
 
@@ -1229,12 +1261,9 @@ def search_by_category(category: str, value: str, user_id: str = "") -> dict:
                 matched = True
 
         if matched:
-            matches.append({
-                "id": profile.get("id"),
-                "name": profile.get("name"),
-                "role": profile.get("role"),
-                "assistant_endpoint": profile.get("assistant_endpoint")
-            })
+            summary = format_profile_summary(profile)
+            summary["assistant_endpoint"] = profile.get("assistant_endpoint")
+            matches.append(summary)
 
     # Log search for analytics
     log_search(query=f"{category}:{value}", results_count=len(matches), search_type="category")

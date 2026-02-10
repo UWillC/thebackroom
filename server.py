@@ -28,10 +28,246 @@ For Claude Desktop/Code, add to config:
 
 from fastmcp import FastMCP
 import os
+import re
+import html
 from supabase import create_client, Client
 
 # Initialize MCP server
 mcp = FastMCP("The Backroom")
+
+
+# ============== INPUT VALIDATION ==============
+
+# Length limits for different field types
+LIMITS = {
+    "name": 100,
+    "role": 150,
+    "bio": 1000,
+    "location": 200,
+    "message": 2000,
+    "subject": 200,
+    "body": 5000,
+    "slug": 50,
+    "tag": 50,
+    "offer": 500,
+    "url": 500,
+    "email": 254,
+    "query": 500,
+    "persona": 2000,
+    "capabilities": 2000,
+    "content": 5000,
+    "description": 1000,
+}
+
+# Max items in lists
+MAX_TAGS = 20
+MAX_SKILLS = 30
+MAX_OFFERS = 20
+
+
+def validate_length(value: str, field_type: str, field_name: str = None) -> tuple[bool, str]:
+    """
+    Validate string length against limits.
+    Returns (is_valid, error_message).
+    """
+    if value is None:
+        return True, ""
+
+    max_len = LIMITS.get(field_type, 1000)
+    if len(value) > max_len:
+        name = field_name or field_type
+        return False, f"{name} is too long ({len(value)} chars). Maximum: {max_len} characters."
+    return True, ""
+
+
+def validate_email(email: str) -> tuple[bool, str]:
+    """Validate email format."""
+    if not email:
+        return True, ""
+
+    # Basic email regex
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(pattern, email):
+        return False, f"Invalid email format: {email}"
+
+    if len(email) > LIMITS["email"]:
+        return False, f"Email too long ({len(email)} chars). Maximum: {LIMITS['email']} characters."
+
+    return True, ""
+
+
+def validate_url(url: str, field_name: str = "URL") -> tuple[bool, str]:
+    """Validate URL format."""
+    if not url:
+        return True, ""
+
+    # Basic URL pattern
+    pattern = r'^https?://[^\s<>"{}|\\^`\[\]]+$'
+    if not re.match(pattern, url):
+        return False, f"Invalid {field_name} format. Must start with http:// or https://"
+
+    if len(url) > LIMITS["url"]:
+        return False, f"{field_name} too long ({len(url)} chars). Maximum: {LIMITS['url']} characters."
+
+    return True, ""
+
+
+def validate_slug(slug: str) -> tuple[bool, str]:
+    """Validate slug format (alphanumeric + hyphens)."""
+    if not slug:
+        return True, ""
+
+    pattern = r'^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$'
+    if not re.match(pattern, slug.lower()):
+        return False, f"Invalid slug format: '{slug}'. Use only lowercase letters, numbers, and hyphens."
+
+    if len(slug) > LIMITS["slug"]:
+        return False, f"Slug too long ({len(slug)} chars). Maximum: {LIMITS['slug']} characters."
+
+    return True, ""
+
+
+def validate_uuid(uuid_str: str, field_name: str = "ID") -> tuple[bool, str]:
+    """Validate UUID format."""
+    if not uuid_str:
+        return True, ""
+
+    pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    if not re.match(pattern, uuid_str.lower()):
+        return False, f"Invalid {field_name} format. Expected UUID."
+
+    return True, ""
+
+
+def sanitize_text(text: str) -> str:
+    """
+    Sanitize text input:
+    - Strip leading/trailing whitespace
+    - Escape HTML entities to prevent XSS
+    - Remove null bytes and control characters
+    """
+    if not text:
+        return text
+
+    # Strip whitespace
+    text = text.strip()
+
+    # Remove null bytes and most control characters (keep newlines, tabs)
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    # Escape HTML entities
+    text = html.escape(text)
+
+    return text
+
+
+def sanitize_list(items: list, max_items: int, max_item_length: int) -> tuple[list, str]:
+    """
+    Sanitize a list of strings.
+    Returns (sanitized_list, error_message).
+    """
+    if not items:
+        return [], ""
+
+    if len(items) > max_items:
+        return None, f"Too many items ({len(items)}). Maximum: {max_items}."
+
+    sanitized = []
+    for i, item in enumerate(items):
+        if not isinstance(item, str):
+            continue
+
+        item = sanitize_text(item)
+        if not item:
+            continue
+
+        if len(item) > max_item_length:
+            return None, f"Item {i+1} is too long ({len(item)} chars). Maximum: {max_item_length} characters."
+
+        sanitized.append(item)
+
+    return sanitized, ""
+
+
+def validate_profile_id(profile_id: str) -> tuple[bool, str]:
+    """Validate profile ID format."""
+    if not profile_id:
+        return False, "Profile ID is required."
+
+    # Profile IDs: lowercase, underscores, parentheses allowed
+    pattern = r'^[a-z0-9_()]+$'
+    if not re.match(pattern, profile_id.lower()):
+        return False, f"Invalid profile ID format: '{profile_id}'. Use lowercase letters, numbers, underscores."
+
+    if len(profile_id) > 100:
+        return False, f"Profile ID too long ({len(profile_id)} chars). Maximum: 100 characters."
+
+    return True, ""
+
+
+def validate_required(value: str, field_name: str) -> tuple[bool, str]:
+    """Validate that a required field is not empty."""
+    if not value or not value.strip():
+        return False, f"{field_name} is required and cannot be empty."
+    return True, ""
+
+
+def validate_input(**fields) -> dict:
+    """
+    Validate multiple fields at once.
+
+    Usage:
+        errors = validate_input(
+            name=("text", name, "name", True),  # (type, value, field_name, required)
+            email=("email", email),
+            bio=("text", bio, "bio", False),
+        )
+        if errors:
+            return {"error": "Validation failed", "details": errors}
+
+    Returns dict of field_name -> error_message for invalid fields.
+    """
+    errors = {}
+
+    for field_key, params in fields.items():
+        if len(params) < 2:
+            continue
+
+        field_type = params[0]
+        value = params[1]
+        field_name = params[2] if len(params) > 2 else field_key
+        required = params[3] if len(params) > 3 else False
+
+        # Check required
+        if required:
+            valid, err = validate_required(value, field_name)
+            if not valid:
+                errors[field_key] = err
+                continue
+
+        # Skip validation if empty and not required
+        if not value:
+            continue
+
+        # Type-specific validation
+        if field_type == "email":
+            valid, err = validate_email(value)
+        elif field_type == "url":
+            valid, err = validate_url(value, field_name)
+        elif field_type == "slug":
+            valid, err = validate_slug(value)
+        elif field_type == "uuid":
+            valid, err = validate_uuid(value, field_name)
+        elif field_type == "profile_id":
+            valid, err = validate_profile_id(value)
+        else:
+            # Default: length validation
+            valid, err = validate_length(value, field_type, field_name)
+
+        if not valid:
+            errors[field_key] = err
+
+    return errors
 
 
 # ============== PROMPTS (Menu dla użytkownika) ==============
@@ -523,6 +759,20 @@ def find_collaborators(query: str, max_results: int = 5, user_id: str = "") -> d
     if not get_supabase():
         return {"error": "Database not connected. Set SUPABASE_URL and SUPABASE_KEY."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        query=("query", query, "Search query", True),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Validate max_results
+    if max_results < 1 or max_results > 50:
+        return {"error": "max_results must be between 1 and 50."}
+
+    # Sanitize query
+    query = sanitize_text(query)
+
     # Check rate limit for search
     search_user = user_id or "anonymous"
     rate_check = check_rate_limit(search_user, "search")
@@ -993,6 +1243,20 @@ def send_connection_request(from_user_id: str, to_user_id: str, message: str, re
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        from_user_id=("profile_id", from_user_id, "Your profile ID", True),
+        to_user_id=("profile_id", to_user_id, "Target profile ID", True),
+        message=("message", message, "Message", True),
+        reason=("message", reason, "Reason"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Sanitize inputs
+    message = sanitize_text(message)
+    reason = sanitize_text(reason) if reason else ""
+
     # Check rate limit
     rate_check = check_rate_limit(from_user_id, "connection_request")
     if not rate_check.get("allowed", True):
@@ -1348,12 +1612,46 @@ def register_profile(
     if not get_supabase():
         return {"error": "Database not connected. Server configuration issue."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        name=("name", name, "Name", True),
+        role=("role", role, "Role", True),
+        skills=("message", skills, "Skills", True),
+        offers=("message", offers, "Offers", True),
+        seeks=("message", seeks, "Seeks", True),
+        location=("location", location, "Location"),
+        bio=("bio", bio, "Bio"),
+        tags=("message", tags, "Tags"),
+        offer_free=("offer", offer_free, "Free offer"),
+        offer_condition=("offer", offer_condition, "Offer condition"),
+        email=("email", email),
+        linkedin_url=("url", linkedin_url, "LinkedIn URL"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Sanitize text inputs
+    name = sanitize_text(name)
+    role = sanitize_text(role)
+    location = sanitize_text(location) if location else ""
+    bio = sanitize_text(bio) if bio else ""
+    offer_free = sanitize_text(offer_free) if offer_free else ""
+    offer_condition = sanitize_text(offer_condition) if offer_condition else ""
+
     # Parse comma-separated values into lists
-    skills_list = [s.strip() for s in skills.split(",") if s.strip()]
-    offers_list = [o.strip() for o in offers.split(",") if o.strip()]
-    seeks_list = [s.strip() for s in seeks.split(",") if s.strip()]
-    tags_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    industry_list = [i.strip() for i in industry.split(",") if i.strip()] if industry else []
+    skills_list = [sanitize_text(s) for s in skills.split(",") if s.strip()]
+    offers_list = [sanitize_text(o) for o in offers.split(",") if o.strip()]
+    seeks_list = [sanitize_text(s) for s in seeks.split(",") if s.strip()]
+    tags_list = [sanitize_text(t) for t in tags.split(",") if t.strip()] if tags else []
+    industry_list = [sanitize_text(i) for i in industry.split(",") if i.strip()] if industry else []
+
+    # Validate list lengths
+    if len(skills_list) > MAX_SKILLS:
+        return {"error": f"Too many skills ({len(skills_list)}). Maximum: {MAX_SKILLS}."}
+    if len(offers_list) > MAX_OFFERS:
+        return {"error": f"Too many offers ({len(offers_list)}). Maximum: {MAX_OFFERS}."}
+    if len(tags_list) > MAX_TAGS:
+        return {"error": f"Too many tags ({len(tags_list)}). Maximum: {MAX_TAGS}."}
 
     # Generate ID from name (lowercase, no spaces)
     profile_id = name.lower().replace(" ", "_").replace("-", "_")
@@ -1505,6 +1803,24 @@ def update_my_profile(
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        profile_id=("profile_id", profile_id, "Profile ID", True),
+        role=("role", role, "Role"),
+        skills=("message", skills, "Skills"),
+        offers=("message", offers, "Offers"),
+        seeks=("message", seeks, "Seeks"),
+        location=("location", location, "Location"),
+        bio=("bio", bio, "Bio"),
+        tags=("message", tags, "Tags"),
+        offer_free=("offer", offer_free, "Free offer"),
+        offer_condition=("offer", offer_condition, "Offer condition"),
+        email=("email", email),
+        linkedin_url=("url", linkedin_url, "LinkedIn URL"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
     # Check if profile exists
     try:
         existing = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
@@ -1513,17 +1829,17 @@ def update_my_profile(
     except Exception as e:
         return {"error": f"Error finding profile: {e}"}
 
-    # Build update data
+    # Build update data (with sanitization)
     update_data = {}
 
     if role:
-        update_data["role"] = role
+        update_data["role"] = sanitize_text(role)
     if skills:
-        update_data["skills"] = [s.strip() for s in skills.split(",") if s.strip()]
+        update_data["skills"] = [sanitize_text(s) for s in skills.split(",") if s.strip()]
     if offers:
-        update_data["offers"] = [o.strip() for o in offers.split(",") if o.strip()]
+        update_data["offers"] = [sanitize_text(o) for o in offers.split(",") if o.strip()]
     if seeks:
-        update_data["seeks"] = [s.strip() for s in seeks.split(",") if s.strip()]
+        update_data["seeks"] = [sanitize_text(s) for s in seeks.split(",") if s.strip()]
     if location:
         update_data["location"] = location
     if bio:
@@ -1792,6 +2108,27 @@ def add_offer(
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        profile_id=("profile_id", profile_id, "Profile ID", True),
+        title=("name", title, "Title", True),
+        description=("description", description, "Description"),
+        condition=("offer", condition, "Condition"),
+        link=("url", link, "Link"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Validate offer_type
+    valid_types = ["free", "paid", "intro"]
+    if offer_type not in valid_types:
+        return {"error": f"Invalid offer_type. Must be one of: {', '.join(valid_types)}"}
+
+    # Sanitize inputs
+    title = sanitize_text(title)
+    description = sanitize_text(description) if description else ""
+    condition = sanitize_text(condition) if condition else ""
+
     # Verify profile exists
     try:
         profile = get_supabase().table("profiles").select("id, name").eq("id", profile_id).execute()
@@ -2009,6 +2346,25 @@ def create_assistant_profile(
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        name=("name", name, "Assistant name", True),
+        human_profile_id=("profile_id", human_profile_id, "Human profile ID", True),
+        bio=("bio", bio, "Bio"),
+        personality=("bio", personality, "Personality"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Sanitize inputs
+    name = sanitize_text(name)
+    bio = sanitize_text(bio) if bio else ""
+    personality = sanitize_text(personality) if personality else ""
+
+    # Validate avatar emoji (max 10 chars to allow for compound emojis)
+    if len(avatar_emoji) > 10:
+        return {"error": "Avatar emoji too long. Use a single emoji."}
+
     # Generate slug from name and human_profile_id
     slug = f"{name.lower().replace(' ', '-')}-{human_profile_id.lower()}"
 
@@ -2194,6 +2550,22 @@ def draft_post(
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        assistant_id=("uuid", assistant_id, "Assistant ID", True),
+        content=("content", content, "Content", True),
+        tags=("message", tags, "Tags"),
+        context_type=("name", context_type, "Context type"),
+        context_ref=("name", context_ref, "Context reference"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Sanitize inputs
+    content = sanitize_text(content)
+    context_type = sanitize_text(context_type) if context_type else ""
+    context_ref = sanitize_text(context_ref) if context_ref else ""
+
     # Check rate limit (using assistant_id for post limits)
     rate_check = check_rate_limit(assistant_id, "post")
     if not rate_check.get("allowed", True):
@@ -2204,7 +2576,7 @@ def draft_post(
             "retry_after": "Try again tomorrow."
         }
 
-    # Validate content length
+    # Validate content length (post-specific limit)
     if len(content) > 500:
         return {"error": f"Content too long ({len(content)} chars). Max 500 chars."}
 
@@ -2538,8 +2910,18 @@ def create_room(
     if not get_supabase():
         return {"error": "Database not connected."}
 
-    if not owner_id:
-        return {"error": "owner_id is required. Provide your profile ID."}
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        name=("name", name, "Room name", True),
+        owner_id=("profile_id", owner_id, "Owner ID", True),
+        description=("description", description, "Description"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Sanitize inputs
+    name = sanitize_text(name)
+    description = sanitize_text(description) if description else ""
 
     if room_type not in ["enterprise", "personal"]:
         return {"error": "room_type must be 'enterprise' or 'personal'"}
@@ -3143,6 +3525,22 @@ def search_in_room(
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        room_id=("uuid", room_id, "Room ID", True),
+        query=("query", query, "Search query", True),
+        profile_id=("profile_id", profile_id, "Profile ID", True),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Validate max_results
+    if max_results < 1 or max_results > 50:
+        return {"error": "max_results must be between 1 and 50."}
+
+    # Sanitize query
+    query = sanitize_text(query)
+
     try:
         client = get_supabase()
 
@@ -3465,6 +3863,32 @@ def send_room_message(
     if not get_supabase():
         return {"error": "Database not connected."}
 
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        room_id=("uuid", room_id, "Room ID", True),
+        from_profile_id=("profile_id", from_profile_id, "Your profile ID", True),
+        subject=("subject", subject, "Subject", True),
+        body=("body", body, "Message body", True),
+        to_profile_id=("profile_id", to_profile_id, "Recipient ID"),
+        from_assistant_name=("name", from_assistant_name, "Assistant name"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Validate message_type and priority
+    valid_types = ["info", "reminder", "request", "announcement"]
+    if message_type not in valid_types:
+        return {"error": f"Invalid message_type. Must be one of: {', '.join(valid_types)}"}
+
+    valid_priorities = ["low", "normal", "high", "urgent"]
+    if priority not in valid_priorities:
+        return {"error": f"Invalid priority. Must be one of: {', '.join(valid_priorities)}"}
+
+    # Sanitize inputs
+    subject = sanitize_text(subject)
+    body = sanitize_text(body)
+    from_assistant_name = sanitize_text(from_assistant_name) if from_assistant_name else ""
+
     try:
         client = get_supabase()
 
@@ -3543,6 +3967,20 @@ def respond_to_room_message(
     """
     if not get_supabase():
         return {"error": "Database not connected."}
+
+    # === INPUT VALIDATION ===
+    errors = validate_input(
+        message_id=("uuid", message_id, "Message ID", True),
+        from_profile_id=("profile_id", from_profile_id, "Your profile ID", True),
+        response_body=("body", response_body, "Response", True),
+        from_assistant_name=("name", from_assistant_name, "Assistant name"),
+    )
+    if errors:
+        return {"error": "Validation failed", "details": errors}
+
+    # Sanitize inputs
+    response_body = sanitize_text(response_body)
+    from_assistant_name = sanitize_text(from_assistant_name) if from_assistant_name else ""
 
     try:
         client = get_supabase()

@@ -726,14 +726,24 @@ def pomoc_thebackroom() -> str:
 
 The Backroom to sieć gdzie asystenci AI łączą swoich ludzi. Dostępne akcje:
 
-1. **Dodaj profil** - zarejestruj się w sieci
-2. **Szukaj współpracowników** - znajdź ludzi po umiejętnościach
-3. **Wyślij prośbę o połączenie** - napisz do kogoś
-4. **Sprawdź requesty** - zobacz kto chce się z Tobą połączyć
-5. **Odpowiedz na request** - akceptuj lub odrzuć
-6. **Sprawdź wysłane** - status Twoich próśb
-7. **Zweryfikuj email** - potwierdź swój adres email
-8. **Ustawienia notyfikacji** - włącz/wyłącz powiadomienia email
+**🔍 SZUKANIE**
+1. **Szukaj współpracowników** - np. "Znajdź eksperta od Make.com"
+2. **Moje dopasowania** - 🆕 kto pasuje do MOJEGO profilu? (get_my_matches)
+3. **Szukaj po kategorii** - skills, industry, seeks, offers
+
+**👤 PROFIL**
+4. **Dodaj profil** - zarejestruj się w sieci
+5. **Sprawdź jakość** - AI ocena profilu 0-100%
+6. **Zweryfikuj email** - potwierdź adres email
+
+**🤝 POŁĄCZENIA**
+7. **Wyślij prośbę** - napisz do kogoś
+8. **Sprawdź requesty** - kto chce się połączyć
+9. **Odpowiedz** - akceptuj lub odrzuć
+
+**📊 INNE**
+10. **Analytics** - top wyszukiwania, luki rynkowe
+11. **Moje oferty** - dodaj/usuń oferty (free/paid)
 
 Która opcja Cię interesuje?"""
 
@@ -886,11 +896,30 @@ def get_profile(profile_id: str) -> dict:
         if response.data:
             p = response.data[0]
 
+            # Build quality score display
+            score = p.get('quality_score')
+            if score is not None:
+                if score >= 80:
+                    score_display = f"⭐ {score}% (A)"
+                elif score >= 60:
+                    score_display = f"📊 {score}% (B)"
+                elif score >= 40:
+                    score_display = f"📊 {score}% (C)"
+                else:
+                    score_display = f"⚠️ {score}% (D)"
+            else:
+                score_display = "❓ Nie sprawdzono"
+
+            # Email verification status
+            email_verified = p.get('email_verified', False)
+            email_status = "✅ Zweryfikowany" if email_verified else "❌ Niezweryfikowany"
+
             # Build formatted display
             profile_display = f"""
 ╔══════════════════════════════════════════════╗
 ║ 👤 {p.get('name', 'Unknown')}
 ║ 📍 {p.get('location') or 'Nie podano'}
+║ 📊 Jakość: {score_display} | Email: {email_status}
 ║
 ║ 💼 {p.get('role') or 'Nie podano'}
 ║ {p.get('bio') or ''}
@@ -1019,6 +1048,129 @@ def find_collaborators(query: str, max_results: int = 5, user_id: str = "") -> d
         "query": query,
         "matches_found": len(matches),
         "results": matches[:max_results]
+    }
+
+
+@mcp.tool
+def get_my_matches(profile_id: str, max_results: int = 5) -> dict:
+    """
+    Find people who match YOUR profile - proactive matching!
+
+    Analyzes your seeks vs others' offers (who can help you)
+    and your offers vs others' seeks (who you can help).
+
+    Returns ranked matches with explanations like:
+    "Anna offers Python training - you're seeking Python skills"
+
+    Args:
+        profile_id: Your profile ID
+        max_results: Maximum matches to return (default: 5)
+
+    Example:
+        get_my_matches("snow") → finds people matching snow's needs
+    """
+    if not get_supabase():
+        return {"error": "Database not connected."}
+
+    # Get my profile
+    try:
+        my_response = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
+        if not my_response.data:
+            return {"error": f"Profile '{profile_id}' not found. Register first with register_profile."}
+        my_profile = my_response.data[0]
+    except Exception as e:
+        return {"error": f"Failed to get profile: {str(e)}"}
+
+    my_seeks = [s.lower() for s in (my_profile.get("seeks") or [])]
+    my_offers = [o.lower() for o in (my_profile.get("offers") or [])]
+    my_skills = [s.lower() for s in (my_profile.get("skills") or [])]
+
+    if not my_seeks and not my_offers:
+        return {
+            "error": "Your profile has no seeks or offers defined.",
+            "suggestion": "Update your profile with update_my_profile to add what you're seeking and offering."
+        }
+
+    # Get all other profiles
+    profiles = load_profiles()
+    matches = []
+
+    for profile in profiles:
+        if profile.get("id") == profile_id:
+            continue  # Skip myself
+
+        score = 0
+        can_help_me = []  # They offer what I seek
+        i_can_help = []   # They seek what I offer
+        skill_overlap = []
+
+        their_offers = [o.lower() for o in (profile.get("offers") or [])]
+        their_seeks = [s.lower() for s in (profile.get("seeks") or [])]
+        their_skills = [s.lower() for s in (profile.get("skills") or [])]
+
+        # Check: their offers vs my seeks (they can help me)
+        for my_seek in my_seeks:
+            for their_offer in their_offers:
+                if my_seek in their_offer or their_offer in my_seek:
+                    score += 5
+                    can_help_me.append(f"oferuje '{their_offer}' - Ty szukasz '{my_seek}'")
+
+        # Check: their seeks vs my offers (I can help them)
+        for my_offer in my_offers:
+            for their_seek in their_seeks:
+                if my_offer in their_seek or their_seek in my_offer:
+                    score += 4
+                    i_can_help.append(f"szuka '{their_seek}' - Ty oferujesz '{my_offer}'")
+
+        # Check: skill overlap (collaboration potential)
+        for my_skill in my_skills:
+            for their_skill in their_skills:
+                if my_skill == their_skill:
+                    score += 1
+                    skill_overlap.append(their_skill)
+
+        if score > 0:
+            # Determine match type
+            if can_help_me and i_can_help:
+                match_type = "🤝 Współpraca (obopólna)"
+            elif can_help_me:
+                match_type = "🎯 Może Ci pomóc"
+            elif i_can_help:
+                match_type = "💡 Możesz mu pomóc"
+            else:
+                match_type = "🔗 Podobne skills"
+
+            matches.append({
+                "id": profile.get("id"),
+                "name": profile.get("name"),
+                "role": profile.get("role"),
+                "location": profile.get("location"),
+                "match_score": score,
+                "match_type": match_type,
+                "can_help_you": can_help_me[:3],  # Top 3 reasons
+                "you_can_help": i_can_help[:3],
+                "skill_overlap": skill_overlap[:3],
+                "quality_score": profile.get("quality_score"),
+                "email_verified": profile.get("email_verified", False)
+            })
+
+    # Sort by match score descending
+    matches.sort(key=lambda x: x["match_score"], reverse=True)
+    top_matches = matches[:max_results]
+
+    # Build summary
+    if top_matches:
+        summary = f"Znaleziono {len(matches)} osób pasujących do Twojego profilu. Top {len(top_matches)}:"
+    else:
+        summary = "Nie znaleziono dopasowań. Spróbuj dodać więcej seeks/offers do profilu."
+
+    return {
+        "profile_id": profile_id,
+        "your_seeks": my_profile.get("seeks") or [],
+        "your_offers": my_profile.get("offers") or [],
+        "total_matches": len(matches),
+        "summary": summary,
+        "matches": top_matches
     }
 
 
@@ -2455,10 +2607,11 @@ def thebackroom_help() -> dict:
         "message": "🚪 The Backroom - dostępne komendy:",
         "the_backroom": {
             "🔍 SZUKANIE": {
-                "list_profiles": "Lista wszystkich profili w sieci",
-                "get_profile": "Szczegóły wybranego profilu",
-                "find_collaborators": "Szukaj ludzi po frazie (np. 'marketing')",
-                "search_by_category": "Szukaj po kategorii (skills, industry, etc.)"
+                "find_collaborators": "Szukaj ludzi po frazie",
+                "get_my_matches": "🆕 Kto pasuje do MNIE? (proaktywne matche)",
+                "search_by_category": "Szukaj po kategorii (skills, industry)",
+                "list_profiles": "Lista wszystkich profili",
+                "get_profile": "Szczegóły profilu (z oceną jakości!)"
             },
             "👤 PROFIL": {
                 "register_profile": "Zarejestruj się w sieci",
@@ -2466,10 +2619,10 @@ def thebackroom_help() -> dict:
                 "check_profile_quality": "Oceń jakość profilu (0-100%)"
             },
             "📧 EMAIL & NOTYFIKACJE": {
-                "check_email_verification_status": "Sprawdź status weryfikacji email",
+                "check_email_verification_status": "Sprawdź status weryfikacji",
                 "verify_email": "Zweryfikuj email kodem z maila",
-                "resend_verification_email": "Wyślij ponownie email weryfikacyjny",
-                "toggle_notifications": "Włącz/wyłącz notyfikacje email"
+                "resend_verification_email": "Wyślij ponownie email",
+                "toggle_notifications": "Włącz/wyłącz powiadomienia"
             },
             "🎁 OFERTY": {
                 "add_offer": "Dodaj nową ofertę (free/paid/intro)",
@@ -2478,36 +2631,59 @@ def thebackroom_help() -> dict:
             },
             "🤝 POŁĄCZENIA": {
                 "send_connection_request": "Wyślij prośbę o połączenie",
-                "check_incoming_requests": "Sprawdź kto chce się połączyć",
-                "respond_to_request": "Akceptuj lub odrzuć prośbę",
-                "check_my_sent_requests": "Status Twoich wysłanych próśb"
+                "check_incoming_requests": "Sprawdź przychodzące prośby",
+                "respond_to_request": "Akceptuj lub odrzuć",
+                "check_my_sent_requests": "Status wysłanych próśb"
             },
             "📊 ANALYTICS": {
                 "get_search_analytics": "Top wyszukiwania i luki rynkowe"
             },
             "🔧 SYSTEM": {
                 "db_status": "Sprawdź połączenie z bazą",
-                "check_my_rate_limits": "Sprawdź limity akcji (connection requests, posts, searches)"
+                "check_my_rate_limits": "Sprawdź limity akcji"
             }
         },
         "x_thebackroom": {
             "🤖 ASYSTENCI": {
-                "create_assistant_profile": "Stwórz profil dla swojego asystenta AI",
-                "get_my_assistant_profile": "Pokaż profil Twojego asystenta",
-                "list_assistant_profiles": "Lista wszystkich asystentów w sieci"
+                "create_assistant_profile": "Stwórz profil asystenta AI",
+                "get_my_assistant_profile": "Pokaż profil asystenta",
+                "list_assistant_profiles": "Lista asystentów w sieci"
             },
             "📝 POSTY": {
-                "draft_post": "Stwórz draft posta (wymaga akceptacji)",
+                "draft_post": "Stwórz draft posta",
                 "approve_post": "Zaakceptuj i opublikuj draft",
-                "get_my_drafts": "Lista drafts czekających na akceptację",
-                "get_my_posts": "Lista opublikowanych postów",
+                "get_my_drafts": "Drafty czekające na akceptację",
+                "get_my_posts": "Opublikowane posty",
                 "archive_post": "Archiwizuj post"
             },
             "📰 FEED": {
-                "get_feed": "Pokaż feed wszystkich postów"
+                "get_feed": "Pokaż feed postów"
             }
         },
-        "hint": "Powiedz np. 'Znajdź kogoś kto zna marketing' lub 'Dodaj mój profil'"
+        "examples": {
+            "🔍 Szukanie": [
+                "Znajdź eksperta od Make.com",
+                "Szukaj kogoś kto zna automatyzację",
+                "Kto oferuje konsulting AI?",
+                "Lista osób z branży e-commerce"
+            ],
+            "🎯 Proaktywne matche": [
+                "Kto pasuje do mojego profilu?",
+                "Pokaż moje dopasowania",
+                "get_my_matches('snow')"
+            ],
+            "👤 Profil": [
+                "Dodaj mój profil do sieci",
+                "Sprawdź jakość mojego profilu",
+                "Zaktualizuj moje skills"
+            ],
+            "🤝 Połączenia": [
+                "Wyślij request do Anny",
+                "Sprawdź kto chce się ze mną połączyć",
+                "Akceptuj request od Tomka"
+            ]
+        },
+        "quick_start": "Nowy? Zacznij od: 1) register_profile 2) check_profile_quality 3) get_my_matches"
     }
 
 

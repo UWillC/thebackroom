@@ -831,6 +831,39 @@ def log_search(query: str, results_count: int, search_type: str = "general", use
         print(f"Error logging search: {e}")
 
 
+# ============== PROFILE STATS ==============
+
+def log_profile_view(profile_id: str, viewer_id: str = None):
+    """Log that someone viewed a profile."""
+    client = get_supabase()
+    if not client:
+        return
+
+    try:
+        client.rpc("log_profile_view", {
+            "p_profile_id": profile_id,
+            "p_viewer_id": viewer_id
+        }).execute()
+    except Exception:
+        pass  # Silent fail - stats are not critical
+
+
+def log_search_appearances(profile_ids: list, query: str, searcher_id: str = None):
+    """Log that profiles appeared in search results."""
+    client = get_supabase()
+    if not client or not profile_ids:
+        return
+
+    try:
+        client.rpc("log_search_appearances", {
+            "p_profile_ids": profile_ids,
+            "p_query": query,
+            "p_searcher_id": searcher_id
+        }).execute()
+    except Exception:
+        pass  # Silent fail
+
+
 # ============== RATE LIMITING ==============
 
 # Limits
@@ -945,6 +978,9 @@ def get_profile(profile_id: str) -> dict:
                     score_display = f"⚠️ {score}% (D)"
             else:
                 score_display = "❓ Nie sprawdzono"
+
+            # Log profile view for stats
+            log_profile_view(profile_id)
 
             # Email verification status
             email_verified = p.get('email_verified', False)
@@ -1078,6 +1114,11 @@ def find_collaborators(query: str, max_results: int = 5, user_id: str = "") -> d
 
     # Log search for analytics
     log_search(query=query, results_count=len(matches), search_type="general")
+
+    # Log search appearances for profile stats
+    result_ids = [m.get("id") for m in matches[:max_results] if m.get("id")]
+    if result_ids:
+        log_search_appearances(result_ids, query, user_id)
 
     return {
         "query": query,
@@ -1268,6 +1309,11 @@ def search_by_category(category: str, value: str, user_id: str = "") -> dict:
     # Log search for analytics
     log_search(query=f"{category}:{value}", results_count=len(matches), search_type="category")
 
+    # Log search appearances for profile stats
+    result_ids = [m.get("id") for m in matches if m.get("id")]
+    if result_ids:
+        log_search_appearances(result_ids, f"{category}:{value}", user_id)
+
     return {
         "category": category,
         "value": value,
@@ -1435,6 +1481,82 @@ def mark_connection_contacted(request_id: str, contact_method: str = "") -> dict
 
     except Exception as e:
         return {"error": f"Error: {str(e)}"}
+
+
+@mcp.tool
+def get_profile_stats(profile_id: str, days: int = 30) -> dict:
+    """
+    Get engagement stats for a profile.
+
+    Shows:
+    - Profile views (how many times someone viewed your profile)
+    - Search appearances (how many times you appeared in results)
+    - Match appearances (how many times you were a match)
+    - Connection stats (sent, received, accepted)
+    - Engagement score (weighted total)
+
+    Args:
+        profile_id: Profile ID to get stats for
+        days: Number of days to analyze (default: 30)
+    """
+    client = get_supabase()
+    if not client:
+        return {"error": "Database not connected."}
+
+    try:
+        response = client.rpc("get_profile_stats", {
+            "p_profile_id": profile_id,
+            "p_days": days
+        }).execute()
+
+        if response.data:
+            data = response.data
+            stats = data.get("stats", {})
+
+            # Build visual stats
+            stats_visual = f"""
+╔══════════════════════════════════════════════╗
+║     📊 PROFILE STATS: {profile_id[:20]}
+║     (ostatnie {days} dni)
+╠══════════════════════════════════════════════╣
+║ 👀 Wyświetlenia profilu:    {stats.get('profile_views', 0):>5}
+║ 🔍 Pojawienia w wynikach:   {stats.get('search_appearances', 0):>5}
+║ 🎯 Pojawienia w matchach:   {stats.get('match_appearances', 0):>5}
+╠══════════════════════════════════════════════╣
+║ 📤 Wysłane requesty:        {stats.get('connections_sent', 0):>5}
+║ 📥 Otrzymane requesty:      {stats.get('connections_received', 0):>5}
+║ ✅ Zaakceptowane:           {stats.get('connections_accepted', 0):>5}
+╠══════════════════════════════════════════════╣
+║ ⭐ ENGAGEMENT SCORE:        {data.get('engagement_score', 0):>5}
+╚══════════════════════════════════════════════╝"""
+
+            return {
+                "profile_id": profile_id,
+                "period_days": days,
+                "stats": stats,
+                "engagement_score": data.get("engagement_score", 0),
+                "recent_viewers": data.get("recent_viewers", []),
+                "stats_visual": stats_visual,
+                "tips": {
+                    "low_views": "Uzupełnij profil, dodaj bio i skills",
+                    "low_searches": "Dodaj więcej tagów i keywords",
+                    "low_connections": "Bądź aktywny - szukaj i wysyłaj requesty"
+                }
+            }
+        else:
+            return {
+                "profile_id": profile_id,
+                "message": "No stats yet. Your profile is new!",
+                "stats": {}
+            }
+
+    except Exception as e:
+        if "does not exist" in str(e) or "function" in str(e).lower():
+            return {
+                "error": "Profile stats not set up yet.",
+                "setup": "Run profile_stats.sql in Supabase to enable."
+            }
+        return {"error": f"Failed to get stats: {str(e)}"}
 
 
 @mcp.tool
@@ -2749,7 +2871,8 @@ def thebackroom_help() -> dict:
             "👤 PROFIL": {
                 "register_profile": "Zarejestruj się w sieci",
                 "update_my_profile": "Zaktualizuj swój profil",
-                "check_profile_quality": "Oceń jakość profilu (0-100%)"
+                "check_profile_quality": "Oceń jakość profilu (0-100%)",
+                "get_profile_stats": "🆕 Twoje statystyki (views, matches)"
             },
             "📧 EMAIL & NOTYFIKACJE": {
                 "check_email_verification_status": "Sprawdź status weryfikacji",

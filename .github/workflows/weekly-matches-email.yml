@@ -1,0 +1,52 @@
+# Weekly Matches Email - GitHub Actions Cron
+# The Backroom - Faza 3 Retention
+# Runs every Monday at 9:00 AM UTC
+# Alternative to pg_cron (not available on Supabase free tier)
+
+name: Weekly Matches Email
+
+on:
+  schedule:
+    # Every Monday at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+
+  # Manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  send-weekly-emails:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Weekly Matches Emails
+        run: |
+          echo "Calling Supabase RPC: send_all_weekly_matches_emails()"
+
+          RESPONSE=$(curl -s -X POST \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/send_all_weekly_matches_emails" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json")
+
+          echo "Response: $RESPONSE"
+
+          # Check if response contains error
+          if echo "$RESPONSE" | grep -q '"error"'; then
+            echo "Error sending emails!"
+            exit 1
+          fi
+
+          # Extract stats from response
+          SENT=$(echo "$RESPONSE" | jq -r '.sent // 0')
+          SKIPPED=$(echo "$RESPONSE" | jq -r '.skipped // 0')
+
+          echo "========================================"
+          echo "Weekly Matches Email Summary:"
+          echo "  Sent: $SENT"
+          echo "  Skipped: $SKIPPED"
+          echo "========================================"
+
+      - name: Report Status
+        if: always()
+        run: |
+          echo "Workflow completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

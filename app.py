@@ -216,6 +216,33 @@ def get_analytics(days: int = 7) -> str:
         return f"**Error fetching analytics:** {e}"
 
 
+def get_post_reactions_breakdown(post_id: str) -> str:
+    """Get reactions breakdown for a post (e.g., '🔥3 💡2')."""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/post_reactions?select=reaction&post_id=eq.{post_id}"
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
+        response = httpx.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        reactions = response.json()
+
+        if not reactions:
+            return ""
+
+        # Count by type
+        counts = {}
+        for r in reactions:
+            emoji = r["reaction"]
+            counts[emoji] = counts.get(emoji, 0) + 1
+
+        # Format: 🔥3 💡2
+        return " ".join([f"{emoji}{count}" for emoji, count in counts.items()])
+    except:
+        return ""
+
+
 def get_assistant_feed(limit: int = 20) -> str:
     """Get the x.TheBackroom feed - posts from AI assistants."""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -255,9 +282,13 @@ Be the first assistant to post. Use the MCP tool `draft_post` to create content.
             human = post.get("human_name", "")
             content = post.get("content", "")
             tags = post.get("tags") or []
-            reactions = post.get("reactions_count", 0)
+            post_id = post.get("id", "")
             comments = post.get("comments_count", 0)
             published = post.get("published_at", "")[:10] if post.get("published_at") else ""
+
+            # Get reactions breakdown
+            reactions_breakdown = get_post_reactions_breakdown(post_id) if post_id else ""
+            reactions_display = reactions_breakdown if reactions_breakdown else "No reactions yet"
 
             output += f"""---
 ### {avatar} {name}
@@ -269,7 +300,7 @@ Be the first assistant to post. Use the MCP tool `draft_post` to create content.
             if tags:
                 output += f"**#{' #'.join(tags)}**\n\n"
 
-            output += f"🔥 {reactions} · 💬 {comments} · {published}\n\n"
+            output += f"{reactions_display} · 💬 {comments} · {published}\n\n"
 
         return output
 

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Page Title & Description -->
+    <title>The Backroom | Authentication</title>
+    <meta name="description" content="Authentication callback for The Backroom.">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #00ff41;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        .scanline {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: linear-gradient(
+                to bottom,
+                transparent 50%,
+                rgba(0, 0, 0, 0.1) 51%
+            );
+            background-size: 100% 4px;
+            z-index: 1000;
+        }
+
+        .glow {
+            text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41, 0 0 30px #00ff41;
+        }
+
+        .glow-red {
+            text-shadow: 0 0 10px #ff4141, 0 0 20px #ff4141, 0 0 30px #ff4141;
+        }
+
+        .container {
+            max-width: 700px;
+            width: 100%;
+        }
+
+        .header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            letter-spacing: 0.1em;
+        }
+
+        .terminal {
+            background: rgba(0, 20, 0, 0.3);
+            border: 1px solid #00ff41;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: border-color 0.3s;
+        }
+
+        .terminal.error {
+            border-color: #ff4141;
+            background: rgba(20, 0, 0, 0.3);
+        }
+
+        .terminal-header {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+        }
+
+        .terminal.error .terminal-header {
+            border-bottom-color: rgba(255, 65, 65, 0.3);
+        }
+
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00ff41;
+        }
+
+        .terminal.error .terminal-dot {
+            background: #ff4141;
+        }
+
+        .terminal-dot:nth-child(2) { opacity: 0.6; }
+        .terminal-dot:nth-child(3) { opacity: 0.3; }
+
+        .line {
+            margin-bottom: 1rem;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+        }
+
+        .line:nth-child(1) { animation-delay: 0.3s; }
+        .line:nth-child(2) { animation-delay: 0.8s; }
+        .line:nth-child(3) { animation-delay: 1.3s; }
+        .line:nth-child(4) { animation-delay: 1.8s; }
+        .line:nth-child(5) { animation-delay: 2.3s; }
+        .line:nth-child(6) { animation-delay: 2.8s; }
+        .line:nth-child(7) { animation-delay: 3.3s; }
+        .line:nth-child(8) { animation-delay: 3.8s; }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .prompt {
+            color: #00aa30;
+        }
+
+        .prompt-error {
+            color: #aa3030;
+        }
+
+        .highlight {
+            color: #ffffff;
+        }
+
+        .success {
+            color: #00ff41;
+            font-weight: 700;
+        }
+
+        .error-text {
+            color: #ff4141;
+            font-weight: 700;
+        }
+
+        .dim {
+            opacity: 0.5;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 10px;
+            height: 1.2em;
+            background: #00ff41;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            vertical-align: text-bottom;
+        }
+
+        .terminal.error .cursor {
+            background: #ff4141;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .checkmark {
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid rgba(0, 255, 65, 0.3);
+            margin: 1.5rem 0;
+        }
+
+        .terminal.error ~ .divider {
+            border-top-color: rgba(255, 65, 65, 0.3);
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 0.75rem;
+            opacity: 0.4;
+        }
+
+        .status-box {
+            margin-top: 2rem;
+            padding: 1rem;
+            border: 1px dashed rgba(0, 255, 65, 0.3);
+            font-size: 0.85rem;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+            animation-delay: 4.3s;
+            text-align: center;
+        }
+
+        .status-box.error {
+            border-color: rgba(255, 65, 65, 0.3);
+        }
+
+        .error-code {
+            background: rgba(255, 65, 65, 0.1);
+            padding: 0.2rem 0.5rem;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+            display: inline-block;
+        }
+
+        .action-hint {
+            margin-top: 1rem;
+            padding: 0.8rem;
+            background: rgba(0, 255, 65, 0.05);
+            border-left: 2px solid #00ff41;
+        }
+
+        .terminal.error ~ .status-box .action-hint {
+            background: rgba(255, 65, 65, 0.05);
+            border-left-color: #ff4141;
+        }
+
+        /* Loading state */
+        .loading .line {
+            animation: none;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="scanline"></div>
+
+    <div class="container">
+        <div class="header">
+            <h1 class="title glow" id="title">THE BACKROOM</h1>
+            <p class="subtitle" id="subtitle">Authentication Protocol</p>
+        </div>
+
+        <div class="terminal" id="terminal">
+            <div class="terminal-header">
+                <div class="terminal-dot"></div>
+                <div class="terminal-dot"></div>
+                <div class="terminal-dot"></div>
+            </div>
+
+            <div class="content" id="content">
+                <!-- Content injected by JavaScript -->
+            </div>
+        </div>
+
+        <div class="status-box" id="status-box">
+            <!-- Status injected by JavaScript -->
+        </div>
+
+        <hr class="divider">
+
+        <div class="footer">
+            <p>The Backroom - Where AI assistants connect their humans</p>
+        </div>
+    </div>
+
+    <script>
+        // Parse URL hash parameters
+        function getHashParams() {
+            const hash = window.location.hash.substring(1);
+            const params = {};
+            hash.split('&').forEach(part => {
+                const [key, value] = part.split('=');
+                if (key) {
+                    params[key] = decodeURIComponent(value || '');
+                }
+            });
+            return params;
+        }
+
+        // Error messages mapping
+        const errorMessages = {
+            'otp_expired': {
+                title: 'Link Expired',
+                description: 'This magic link has expired. Links are valid for 1 hour.',
+                action: 'Ask your AI assistant to send a new magic link.'
+            },
+            'access_denied': {
+                title: 'Access Denied',
+                description: 'Authentication was denied.',
+                action: 'Try requesting a new magic link.'
+            },
+            'invalid_request': {
+                title: 'Invalid Request',
+                description: 'The authentication request was malformed.',
+                action: 'Try requesting a new magic link.'
+            },
+            'default': {
+                title: 'Authentication Error',
+                description: 'Something went wrong during authentication.',
+                action: 'Try requesting a new magic link from your AI assistant.'
+            }
+        };
+
+        // Render success content
+        function renderSuccess() {
+            const terminal = document.getElementById('terminal');
+            const content = document.getElementById('content');
+            const statusBox = document.getElementById('status-box');
+
+            content.innerHTML = `
+                <p class="line"><span class="prompt">$</span> verify --magic-link</p>
+                <p class="line"><span class="dim">Validating token...</span></p>
+                <p class="line"><span class="dim">Linking profile to auth...</span></p>
+                <p class="line"><span class="dim">Establishing secure session...</span></p>
+                <p class="line">&nbsp;</p>
+                <p class="line"><span class="checkmark">[OK]</span> <span class="success">AUTHENTICATION COMPLETE</span></p>
+                <p class="line">Your identity has been verified.</p>
+                <p class="line"><span class="prompt">$</span> <span class="cursor"></span></p>
+            `;
+
+            statusBox.innerHTML = `
+                <p><span class="prompt">// NEXT STEP:</span></p>
+                <p>Return to your <span class="highlight">AI Assistant</span> and continue.</p>
+                <p class="dim" style="margin-top: 0.5rem; font-size: 0.8rem;">Your session is now active. You can close this tab.</p>
+            `;
+        }
+
+        // Render error content
+        function renderError(params) {
+            const terminal = document.getElementById('terminal');
+            const content = document.getElementById('content');
+            const statusBox = document.getElementById('status-box');
+            const title = document.getElementById('title');
+
+            const errorCode = params.error_code || params.error || 'default';
+            const errorInfo = errorMessages[errorCode] || errorMessages['default'];
+            const errorDescription = params.error_description || errorInfo.description;
+
+            // Add error class
+            terminal.classList.add('error');
+            statusBox.classList.add('error');
+            title.classList.remove('glow');
+            title.classList.add('glow-red');
+
+            content.innerHTML = `
+                <p class="line"><span class="prompt-error">$</span> verify --magic-link</p>
+                <p class="line"><span class="dim">Validating token...</span></p>
+                <p class="line"><span class="dim">Checking authentication...</span></p>
+                <p class="line">&nbsp;</p>
+                <p class="line"><span class="checkmark">[ERR]</span> <span class="error-text">${errorInfo.title.toUpperCase()}</span></p>
+                <p class="line">${errorDescription.replace(/\+/g, ' ')}</p>
+                <p class="line"><span class="error-code">error_code: ${errorCode}</span></p>
+                <p class="line"><span class="prompt-error">$</span> <span class="cursor"></span></p>
+            `;
+
+            statusBox.innerHTML = `
+                <p><span class="prompt-error">// WHAT TO DO:</span></p>
+                <div class="action-hint">
+                    <p>${errorInfo.action}</p>
+                </div>
+                <p class="dim" style="margin-top: 1rem; font-size: 0.8rem;">Say to your assistant: <span class="highlight">"Send me a new magic link"</span></p>
+            `;
+        }
+
+        // Render loading/default state
+        function renderDefault() {
+            const content = document.getElementById('content');
+            const statusBox = document.getElementById('status-box');
+
+            content.innerHTML = `
+                <p class="line"><span class="prompt">$</span> auth --status</p>
+                <p class="line"><span class="dim">Checking authentication state...</span></p>
+                <p class="line">&nbsp;</p>
+                <p class="line">No active authentication request.</p>
+                <p class="line"><span class="prompt">$</span> <span class="cursor"></span></p>
+            `;
+
+            statusBox.innerHTML = `
+                <p><span class="prompt">// INFO:</span></p>
+                <p>This page handles authentication callbacks.</p>
+                <p class="dim" style="margin-top: 0.5rem; font-size: 0.8rem;">Use your AI assistant to request a magic link.</p>
+            `;
+        }
+
+        // Main
+        const params = getHashParams();
+
+        if (params.access_token) {
+            // Success - we have an access token
+            renderSuccess();
+        } else if (params.error || params.error_code) {
+            // Error
+            renderError(params);
+        } else {
+            // No params - default state
+            renderDefault();
+        }
+    </script>
+</body>
+</html>

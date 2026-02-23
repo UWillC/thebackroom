@@ -10,6 +10,7 @@ from .magic_link import (
     auth_status,
     auth_logout,
     refresh_session,
+    verify_auth_by_email,
 )
 
 from .tools import register_tools

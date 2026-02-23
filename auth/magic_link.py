@@ -133,7 +133,8 @@ def request_magic_link(email: str) -> dict:
         return {
             "success": True,
             "message": f"Magic link sent to {email}",
-            "next_step": "Check your email and click the magic link, then run auth_callback(token) with the token from the URL"
+            "next_step": "Check your email, click the link, and return here. Say 'I clicked the link' and I'll verify your authentication.",
+            "note": "No need to copy anything - just click and come back!"
         }
 
     except Exception as e:
@@ -203,6 +204,66 @@ def auth_callback(access_token: str, refresh_token: str) -> dict:
         return {
             "success": False,
             "error": f"Authentication failed: {e}"
+        }
+
+
+def verify_auth_by_email(email: str) -> dict:
+    """
+    Verify if a user is authenticated by checking their profile.
+
+    This checks if the profile with this email has auth_user_id set,
+    which means they completed the magic link flow.
+
+    Args:
+        email: User's email address
+
+    Returns:
+        dict with authentication status
+    """
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_KEY", "")
+
+    if not supabase_url or not supabase_key:
+        return {
+            "authenticated": False,
+            "error": "Database not configured"
+        }
+
+    try:
+        client = create_client(supabase_url, supabase_key)
+
+        # Check if profile exists and has auth_user_id
+        result = client.table("profiles").select(
+            "id, name, email, auth_user_id"
+        ).eq("email", email).execute()
+
+        if not result.data:
+            return {
+                "authenticated": False,
+                "error": "No profile found with this email. Register first with register_profile()."
+            }
+
+        profile = result.data[0]
+
+        if profile.get("auth_user_id"):
+            return {
+                "authenticated": True,
+                "message": "You are authenticated!",
+                "profile_id": profile.get("id"),
+                "name": profile.get("name"),
+                "email": profile.get("email")
+            }
+        else:
+            return {
+                "authenticated": False,
+                "message": "Profile exists but not yet authenticated. Click the magic link in your email.",
+                "profile_id": profile.get("id")
+            }
+
+    except Exception as e:
+        return {
+            "authenticated": False,
+            "error": f"Verification failed: {e}"
         }
 
 

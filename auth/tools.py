@@ -8,6 +8,7 @@ from auth import (
     auth_status as _auth_status,
     auth_logout as _auth_logout,
     refresh_session as _refresh_session,
+    verify_auth_by_email as _verify_auth_by_email,
 )
 
 
@@ -20,8 +21,14 @@ def register_tools(mcp):
         Request a magic link to authenticate via email.
 
         Use this to start the authentication process. A magic link will be
-        sent to your email. Click the link, then use auth_complete() with
-        the tokens from the URL.
+        sent to your email. After the user clicks the link, use
+        auth_verify_email() to confirm authentication.
+
+        Flow:
+        1. Call this with user's email
+        2. User checks email and clicks the magic link
+        3. User returns and says "I clicked" or "I'm logged in"
+        4. Call auth_verify_email() to confirm
 
         Args:
             email: Your email address (must match your profile email)
@@ -32,6 +39,24 @@ def register_tools(mcp):
         if not email or "@" not in email:
             return {"error": "Invalid email address"}
         return _request_magic_link(email)
+
+    @mcp.tool
+    def auth_verify_email(email: str) -> dict:
+        """
+        Verify if user is authenticated after clicking magic link.
+
+        Use this after the user says they clicked the magic link.
+        Checks if their profile has been linked to auth.
+
+        Args:
+            email: The email address used for magic link
+
+        Returns:
+            Authentication status with profile info if authenticated
+        """
+        if not email or "@" not in email:
+            return {"error": "Invalid email address"}
+        return _verify_auth_by_email(email)
 
     @mcp.tool
     def auth_complete(access_token: str, refresh_token: str) -> dict:

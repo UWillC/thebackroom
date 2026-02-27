@@ -26,6 +26,7 @@ from .supabase import (
     SUPABASE_URL,
     SUPABASE_KEY,
     get_supabase,
+    get_supabase_with_auth,
     load_profiles,
     format_profile_summary,
     log_search,

@@ -2,7 +2,7 @@
 The Backroom - Room Invites Module
 """
 
-from utils import get_supabase
+from utils import get_supabase, get_supabase_with_auth
 
 
 def register_tools(mcp):
@@ -35,7 +35,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is admin/owner
             is_admin = client.rpc("is_room_admin", {
@@ -126,7 +126,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Find and validate invite
             invite_response = client.table("room_invites").select(

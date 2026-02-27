@@ -13,11 +13,28 @@ _supabase: Client = None
 
 
 def get_supabase() -> Client:
-    """Get or create Supabase client."""
+    """Get or create Supabase client (anon key, no auth)."""
     global _supabase
     if _supabase is None and SUPABASE_URL and SUPABASE_KEY:
         _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _supabase
+
+
+def get_supabase_with_auth() -> Client:
+    """Get Supabase client with user auth if available, otherwise anon.
+
+    Checks for a valid session in ~/.config/thebackroom/session.json.
+    If found, returns a client with the user's JWT (RLS-compatible).
+    If not, falls back to the anon key client.
+    """
+    try:
+        from auth.magic_link import get_authenticated_client
+        auth_client = get_authenticated_client()
+        if auth_client:
+            return auth_client
+    except (ImportError, Exception):
+        pass
+    return get_supabase()
 
 
 def load_profiles() -> list:

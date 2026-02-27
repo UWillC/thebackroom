@@ -2,7 +2,7 @@
 The Backroom - Member Search Module
 """
 
-from utils import get_supabase, validate_input, sanitize_text
+from utils import get_supabase, get_supabase_with_auth, validate_input, sanitize_text
 
 
 def register_tools(mcp):
@@ -47,7 +47,7 @@ def register_tools(mcp):
         query = sanitize_text(query)
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is a member
             is_member = client.rpc("is_room_member", {
@@ -147,7 +147,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is a member
             is_member = client.rpc("is_room_member", {

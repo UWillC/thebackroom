@@ -80,12 +80,13 @@ def register_tools(mcp):
                 room = response.data[0]
 
                 # Add owner as member with 'owner' role
+                from datetime import datetime, timezone
                 member_data = {
                     "room_id": room["id"],
                     "profile_id": owner_id,
                     "role": "owner",
                     "status": "approved",
-                    "joined_at": "now()"
+                    "joined_at": datetime.now(timezone.utc).isoformat()
                 }
                 client.table("room_members").insert(member_data).execute()
 

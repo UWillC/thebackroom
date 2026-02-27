@@ -3,7 +3,7 @@ The Backroom - Send Messages Module
 """
 
 from utils import (
-    get_supabase, validate_input, sanitize_text, check_injection_and_sanitize
+    get_supabase, get_supabase_with_auth, validate_input, sanitize_text, check_injection_and_sanitize
 )
 
 
@@ -80,7 +80,7 @@ def register_tools(mcp):
         from_assistant_name = sanitize_text(from_assistant_name, check_injection=True) if from_assistant_name else ""
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is a member
             is_member = client.rpc("is_room_member", {
@@ -177,7 +177,7 @@ def register_tools(mcp):
         from_assistant_name = sanitize_text(from_assistant_name, check_injection=True) if from_assistant_name else ""
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Use the SQL function
             response = client.rpc("respond_to_message", {

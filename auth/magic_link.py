@@ -62,10 +62,18 @@ def get_session() -> Optional[dict]:
     expires_at = session.get("expires_at")
     if expires_at:
         try:
-            exp_time = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            if datetime.now(exp_time.tzinfo) > exp_time:
-                _clear_session()
-                return None
+            if isinstance(expires_at, (int, float)):
+                # Unix timestamp
+                exp_time = datetime.fromtimestamp(expires_at)
+                if datetime.now() > exp_time:
+                    _clear_session()
+                    return None
+            elif isinstance(expires_at, str):
+                # ISO format string
+                exp_time = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if datetime.now(exp_time.tzinfo) > exp_time:
+                    _clear_session()
+                    return None
         except (ValueError, TypeError):
             pass
 

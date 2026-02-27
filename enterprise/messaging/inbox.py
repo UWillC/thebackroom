@@ -2,7 +2,7 @@
 The Backroom - Message Inbox Module
 """
 
-from utils import get_supabase
+from utils import get_supabase, get_supabase_with_auth
 
 
 def register_tools(mcp):
@@ -29,7 +29,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Use the SQL function
             params = {"p_profile_id": profile_id}
@@ -96,7 +96,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Get message
             response = client.table("room_messages").select(

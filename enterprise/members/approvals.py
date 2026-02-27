@@ -2,7 +2,7 @@
 The Backroom - Member Approvals Module
 """
 
-from utils import get_supabase
+from utils import get_supabase, get_supabase_with_auth
 
 
 def register_tools(mcp):
@@ -24,7 +24,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is admin
             is_admin = client.rpc("is_room_admin", {
@@ -88,7 +88,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is admin
             is_admin = client.rpc("is_room_admin", {
@@ -158,7 +158,7 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            client = get_supabase()
+            client = get_supabase_with_auth()
 
             # Check if user is admin
             is_admin = client.rpc("is_room_admin", {

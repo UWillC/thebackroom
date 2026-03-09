@@ -217,10 +217,12 @@ def auth_callback(access_token: str, refresh_token: str) -> dict:
 
 def verify_auth_by_email(email: str) -> dict:
     """
-    Verify if a user is authenticated by checking their profile.
+    Verify if a user is authenticated and create a server-side session.
 
-    This checks if the profile with this email has auth_user_id set,
-    which means they completed the magic link flow.
+    After user clicks magic link, this:
+    1. Checks if profile has auth_user_id (magic link was clicked)
+    2. Uses admin API to generate tokens server-side
+    3. Saves session to session.json for RLS-protected operations
 
     Args:
         email: User's email address
@@ -230,6 +232,7 @@ def verify_auth_by_email(email: str) -> dict:
     """
     supabase_url = os.environ.get("SUPABASE_URL", "")
     supabase_key = os.environ.get("SUPABASE_KEY", "")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
     if not supabase_url or not supabase_key:
         return {
@@ -253,20 +256,73 @@ def verify_auth_by_email(email: str) -> dict:
 
         profile = result.data[0]
 
-        if profile.get("auth_user_id"):
-            return {
-                "authenticated": True,
-                "message": "You are authenticated!",
-                "profile_id": profile.get("id"),
-                "name": profile.get("name"),
-                "email": profile.get("email")
-            }
-        else:
+        if not profile.get("auth_user_id"):
             return {
                 "authenticated": False,
                 "message": "Profile exists but not yet authenticated. Click the magic link in your email.",
                 "profile_id": profile.get("id")
             }
+
+        # Profile is linked to auth — now generate a server-side session
+        if not service_role_key:
+            # Fallback: return authenticated but warn about missing session
+            return {
+                "authenticated": True,
+                "message": "You are authenticated! (Note: SUPABASE_SERVICE_ROLE_KEY not set — RLS operations may fail)",
+                "profile_id": profile.get("id"),
+                "name": profile.get("name"),
+                "email": profile.get("email"),
+                "session_created": False
+            }
+
+        # Use admin API to generate magic link and exchange for session
+        admin_client = create_client(supabase_url, service_role_key)
+
+        # Generate a server-side magic link (not sent to user)
+        link_response = admin_client.auth.admin.generate_link({
+            "type": "magiclink",
+            "email": email
+        })
+
+        if link_response and hasattr(link_response, 'properties') and link_response.properties:
+            token_hash = link_response.properties.hashed_token
+
+            # Verify the OTP to get access/refresh tokens
+            session_response = client.auth.verify_otp({
+                "token_hash": token_hash,
+                "type": "magiclink"
+            })
+
+            if session_response and session_response.session:
+                # Save session locally
+                session_data = {
+                    "access_token": session_response.session.access_token,
+                    "refresh_token": session_response.session.refresh_token,
+                    "user_id": session_response.user.id,
+                    "email": session_response.user.email,
+                    "expires_at": session_response.session.expires_at,
+                    "authenticated_at": datetime.now().isoformat()
+                }
+                _save_session(session_data)
+
+                return {
+                    "authenticated": True,
+                    "message": "You are authenticated!",
+                    "profile_id": profile.get("id"),
+                    "name": profile.get("name"),
+                    "email": profile.get("email"),
+                    "session_created": True
+                }
+
+        # Fallback if admin token generation failed
+        return {
+            "authenticated": True,
+            "message": "You are authenticated! (Session generation failed — try auth_request_magic_link again)",
+            "profile_id": profile.get("id"),
+            "name": profile.get("name"),
+            "email": profile.get("email"),
+            "session_created": False
+        }
 
     except Exception as e:
         return {

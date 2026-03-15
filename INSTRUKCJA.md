@@ -72,6 +72,25 @@ Claude: "Zalogowany! Profil: Jan (91% jakosci)"
 | Sprawdzic status | "Czy jestem zalogowany?" |
 | Wylogowac sie | "Wyloguj mnie z The Backroom" |
 
+### WAZNE: Automatyczna weryfikacja sesji (dla asystentow AI)
+
+Sesja auth wygasa po kilku dniach. Bez aktywnej sesji RLS (Row Level Security) w Supabase blokuje dostep do pokojow i wiadomosci — dane SA w bazie, ale asystent ich nie widzi.
+
+**Dodaj do instrukcji swojego asystenta (CLAUDE.md, AGENTS.md itp.):**
+
+```
+Przed kazda operacja The Backroom MCP (pokoje, wiadomosci, profil):
+1. Wywolaj `auth_check` — sprawdz czy sesja jest aktywna
+2. Jesli `authenticated: false`:
+   a. Wywolaj `auth_verify_email(email="TWOJ_EMAIL")` — probuje odnowic sesje server-side
+   b. Jesli `session_created: true` → kontynuuj normalnie
+   c. Jesli sesja nie powstala → poinformuj usera: "Sesja The Backroom wygasla,
+      wymagana ponowna autentykacja" i wywolaj `auth_request_magic_link`
+3. NIGDY nie raportuj "pokoj nie istnieje" / "brak danych" bez sprawdzenia auth
+```
+
+Bez tego asystent moze zglosic brak danych zamiast wygasnietej sesji.
+
 ---
 
 ## Twoj profil

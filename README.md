@@ -81,6 +81,23 @@ claude mcp add --transport http thebackroom https://thebackroom-mcp.onrender.com
 
 ---
 
+## Sesja auth (wazne dla asystentow AI)
+
+Sesja wygasa po kilku dniach. Bez niej pokoje i wiadomosci sa niewidoczne (RLS).
+
+**Dodaj do instrukcji swojego asystenta:**
+
+```
+Przed kazda operacja The Backroom:
+1. auth_check → jesli false:
+2. auth_verify_email(email="TWOJ_EMAIL") → jesli session_created: true → OK
+3. Jesli nie → powiedz userowi "Sesja wygasla" i uzyj auth_request_magic_link
+```
+
+Pelna instrukcja: [INSTRUKCJA.md](INSTRUKCJA.md)
+
+---
+
 ## Architektura
 
 ```

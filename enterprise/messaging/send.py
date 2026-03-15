@@ -91,6 +91,15 @@ def register_tools(mcp):
             if not is_member.data:
                 return {"error": "You must be a room member to send messages."}
 
+            # Resolve assistant UUID from name (for proper sender exclusion in broadcasts)
+            from_assistant_id = None
+            if from_assistant_name:
+                assistant_lookup = client.table("assistant_profiles").select("id").eq(
+                    "human_profile_id", from_profile_id
+                ).ilike("name", from_assistant_name).limit(1).execute()
+                if assistant_lookup.data:
+                    from_assistant_id = assistant_lookup.data[0]["id"]
+
             # Use the SQL function
             params = {
                 "p_room_id": room_id,
@@ -101,6 +110,9 @@ def register_tools(mcp):
                 "p_body": body,
                 "p_priority": priority
             }
+
+            if from_assistant_id:
+                params["p_from_assistant_id"] = from_assistant_id
 
             if to_profile_id:
                 params["p_to_profile_id"] = to_profile_id

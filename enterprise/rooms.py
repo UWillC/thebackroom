@@ -90,12 +90,33 @@ def register_tools(mcp):
                 }
                 client.table("room_members").insert(member_data).execute()
 
+                # For personal rooms: auto-add owner's assistants as members
+                assistants_added = 0
+                if room_type == "personal":
+                    try:
+                        assistants = client.table("assistant_profiles").select("id").eq(
+                            "human_profile_id", owner_id
+                        ).eq("is_active", True).execute()
+
+                        for a in (assistants.data or []):
+                            client.table("room_members").insert({
+                                "room_id": room["id"],
+                                "profile_id": owner_id,
+                                "assistant_profile_id": a["id"],
+                                "role": "member",
+                                "status": "approved",
+                                "joined_at": datetime.now(timezone.utc).isoformat()
+                            }).execute()
+                            assistants_added += 1
+                    except Exception:
+                        pass  # Non-critical
+
                 # Log action
                 client.rpc("log_room_action", {
                     "p_room_id": room["id"],
                     "p_actor_id": owner_id,
                     "p_action": "room_created",
-                    "p_details": {"room_type": room_type}
+                    "p_details": {"room_type": room_type, "assistants_added": assistants_added}
                 }).execute()
 
                 return {
@@ -107,6 +128,7 @@ def register_tools(mcp):
                         "room_type": room["room_type"],
                         "owner_id": owner_id
                     },
+                    "assistants_added": assistants_added,
                     "message": f"Room '{name}' created! Next: create_room_invite to invite members.",
                     "next_step": "Use create_room_invite(room_id) to create invitation tokens."
                 }

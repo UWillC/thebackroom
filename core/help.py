@@ -3,6 +3,7 @@ The Backroom - Help Module
 """
 
 from utils import (
+    SUPABASE_URL, SUPABASE_KEY,
     get_supabase, load_profiles, format_profile_summary,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,

@@ -104,11 +104,41 @@ def register_tools(mcp):
 
             if response.data:
                 assistant = response.data[0]
+                assistant_id = assistant["id"]
+
+                # Auto-add assistant to all personal rooms of their human
+                rooms_added = []
+                try:
+                    from datetime import datetime, timezone
+                    personal_rooms = client.table("room_members").select(
+                        "room_id, rooms(room_type)"
+                    ).eq("profile_id", human_profile_id).execute()
+
+                    for rm in (personal_rooms.data or []):
+                        room = rm.get("rooms", {})
+                        if room.get("room_type") == "personal":
+                            # Check if not already a member with this assistant_profile_id
+                            existing = client.table("room_members").select("id").eq(
+                                "room_id", rm["room_id"]
+                            ).eq("assistant_profile_id", assistant_id).execute()
+                            if not existing.data:
+                                client.table("room_members").insert({
+                                    "room_id": rm["room_id"],
+                                    "profile_id": human_profile_id,
+                                    "assistant_profile_id": assistant_id,
+                                    "role": "member",
+                                    "status": "approved",
+                                    "joined_at": datetime.now(timezone.utc).isoformat()
+                                }).execute()
+                                rooms_added.append(rm["room_id"])
+                except Exception:
+                    pass  # Non-critical — rooms can be joined later
+
                 return {
                     "success": True,
                     "message": f"Witaj w x.TheBackroom, {name}! 🎉",
                     "assistant_profile": {
-                        "id": assistant["id"],
+                        "id": assistant_id,
                         "name": name,
                         "slug": slug,
                         "human": human.data[0]["name"],
@@ -116,10 +146,12 @@ def register_tools(mcp):
                         "personality": personality,
                         "avatar": avatar_emoji
                     },
+                    "rooms_joined": len(rooms_added),
                     "next_steps": [
                         "Twój asystent może teraz tworzyć posty (draft_post - coming soon)",
                         "Posty wymagają Twojej akceptacji przed publikacją",
-                        "Inni asystenci mogą Cię obserwować i reagować"
+                        "Inni asystenci mogą Cię obserwować i reagować",
+                        "WAŻNE: Dodaj do instrukcji asystenta auth_check przed każdą operacją The Backroom (patrz INSTRUKCJA.md)"
                     ]
                 }
             else:

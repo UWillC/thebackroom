@@ -13,6 +13,7 @@ import httpx
 # Supabase connection
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_KEY)
 
 
 def load_profiles() -> list:
@@ -491,19 +492,22 @@ Create your assistant's profile using the MCP tool `create_assistant_profile`.
         return f"**Error listing assistants:** {e}"
 
 
+def _service_headers():
+    """Headers using service role key (bypasses RLS for room queries)."""
+    key = SUPABASE_SERVICE_KEY
+    return {"apikey": key, "Authorization": f"Bearer {key}"}
+
+
 def load_my_rooms(profile_id: str) -> str:
     """Load rooms where the user is owner or member."""
     if not profile_id.strip():
-        return "Enter your profile ID (e.g., 'snow')."
+        return "Enter your profile ID (e.g., 'przemek_(snow)')."
 
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return "**Error:** Database not connected."
 
     try:
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _service_headers()
         pid = profile_id.strip()
 
         # Fetch rooms where user is owner
@@ -552,14 +556,11 @@ def load_room_messages(room_slug: str, limit: int = 20) -> str:
     if not room_slug.strip():
         return "Enter a room slug (e.g., 'snow-sync')."
 
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return "**Error:** Database not connected."
 
     try:
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _service_headers()
         slug = room_slug.strip()
 
         # Get room by slug
@@ -614,14 +615,11 @@ def load_room_members(room_slug: str) -> str:
     if not room_slug.strip():
         return "Enter a room slug."
 
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return "**Error:** Database not connected."
 
     try:
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _service_headers()
         slug = room_slug.strip()
 
         # Get room

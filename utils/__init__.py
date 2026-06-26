@@ -20,6 +20,7 @@ from .validation import (
     validate_profile_id,
     validate_required,
     validate_input,
+    wrap_untrusted,
 )
 
 from .supabase import (

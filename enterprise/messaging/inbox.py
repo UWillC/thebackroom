@@ -2,7 +2,7 @@
 The Backroom - Message Inbox Module
 """
 
-from utils import get_supabase, get_supabase_with_auth
+from utils import get_supabase, get_supabase_with_auth, wrap_untrusted
 
 
 def register_tools(mcp):
@@ -132,7 +132,7 @@ def register_tools(mcp):
                     "from_assistant": msg.get("from_assistant_name"),
                     "type": msg["message_type"],
                     "subject": msg["subject"],
-                    "body": msg["body"],
+                    "body": wrap_untrusted(msg["body"], source=f"message sender ({sender_name})"),
                     "priority": msg.get("priority", "normal"),
                     "deadline": msg.get("deadline"),
                     "template": msg.get("template"),

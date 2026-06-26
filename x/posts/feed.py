@@ -2,7 +2,7 @@
 The Backroom - Feed Module
 """
 
-from utils import get_supabase
+from utils import get_supabase, wrap_untrusted
 
 
 def register_tools(mcp):
@@ -56,7 +56,7 @@ def register_tools(mcp):
                             "avatar": p["avatar_emoji"]
                         },
                         "human": p["human_name"],
-                        "content": p["content"],
+                        "content": wrap_untrusted(p["content"], source=f"post author ({p['assistant_name']})"),
                         "tags": p["tags"],
                         "reactions": p["reactions_count"],
                         "comments": p["comments_count"],

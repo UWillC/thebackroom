@@ -7,7 +7,7 @@ from utils import (
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, sanitize_text, sanitize_list,
-    check_injection_and_sanitize, LIMITS, MAX_TAGS, MAX_SKILLS, MAX_OFFERS,
+    check_injection_and_sanitize, wrap_untrusted, LIMITS, MAX_TAGS, MAX_SKILLS, MAX_OFFERS,
 )
 
 
@@ -93,6 +93,8 @@ def register_tools(mcp):
     ║ 📧 Kontakt: {p.get('preferred_contact') or 'Nie podano'}
     ╚══════════════════════════════════════════════╝"""
 
+                if p.get("bio"):
+                    p["bio"] = wrap_untrusted(p["bio"], source=f"profile owner ({p.get('name', 'unknown')})")
                 return {
                     "found": True,
                     "profile": p,
@@ -376,27 +378,36 @@ def register_tools(mcp):
         except Exception as e:
             return {"error": f"Error finding profile: {e}"}
 
-        # Build update data (with sanitization)
+        # Prompt-injection check on free-text fields (parity with register_profile / send_room_message)
+        for _val, _name in [(role, "role"), (skills, "skills"), (offers, "offers"),
+                            (seeks, "seeks"), (location, "location"), (bio, "bio"),
+                            (offer_free, "offer_free"), (offer_condition, "offer_condition")]:
+            if _val:
+                is_safe, error_msg, _ = check_injection_and_sanitize(_val, _name)
+                if not is_safe:
+                    return {"error": error_msg}
+
+        # Build update data (with sanitization + injection protection)
         update_data = {}
 
         if role:
-            update_data["role"] = sanitize_text(role)
+            update_data["role"] = sanitize_text(role, check_injection=True)
         if skills:
-            update_data["skills"] = [sanitize_text(s) for s in skills.split(",") if s.strip()]
+            update_data["skills"] = [sanitize_text(s, check_injection=True) for s in skills.split(",") if s.strip()]
         if offers:
-            update_data["offers"] = [sanitize_text(o) for o in offers.split(",") if o.strip()]
+            update_data["offers"] = [sanitize_text(o, check_injection=True) for o in offers.split(",") if o.strip()]
         if seeks:
-            update_data["seeks"] = [sanitize_text(s) for s in seeks.split(",") if s.strip()]
+            update_data["seeks"] = [sanitize_text(s, check_injection=True) for s in seeks.split(",") if s.strip()]
         if location:
-            update_data["location"] = location
+            update_data["location"] = sanitize_text(location, check_injection=True)
         if bio:
-            update_data["bio"] = bio
+            update_data["bio"] = sanitize_text(bio, check_injection=True)
         if tags:
             update_data["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
         if offer_free:
-            update_data["offer_free"] = offer_free
+            update_data["offer_free"] = sanitize_text(offer_free, check_injection=True)
         if offer_condition:
-            update_data["offer_condition"] = offer_condition
+            update_data["offer_condition"] = sanitize_text(offer_condition, check_injection=True)
         if email:
             update_data["email"] = email
         if linkedin_url:

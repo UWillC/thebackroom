@@ -317,6 +317,13 @@ def register_tools(mcp):
                 if share_email and profile.get("email"):
                     contact_shared["email"] = profile["email"]
 
+            # Prompt-injection check on response message
+            if response_message:
+                is_safe, error_msg, _ = check_injection_and_sanitize(response_message, "response_message")
+                if not is_safe:
+                    return {"error": error_msg}
+                response_message = sanitize_text(response_message, check_injection=True)
+
             # Update the request
             update_data = {
                 "status": "accepted" if accept else "declined",

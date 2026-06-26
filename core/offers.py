@@ -58,10 +58,17 @@ def register_tools(mcp):
         if offer_type not in valid_types:
             return {"error": f"Invalid offer_type. Must be one of: {', '.join(valid_types)}"}
 
-        # Sanitize inputs
-        title = sanitize_text(title)
-        description = sanitize_text(description) if description else ""
-        condition = sanitize_text(condition) if condition else ""
+        # Prompt-injection check on free-text fields
+        for _val, _name in [(title, "title"), (description, "description"), (condition, "condition")]:
+            if _val:
+                is_safe, error_msg, _ = check_injection_and_sanitize(_val, _name)
+                if not is_safe:
+                    return {"error": error_msg}
+
+        # Sanitize inputs (with injection protection)
+        title = sanitize_text(title, check_injection=True)
+        description = sanitize_text(description, check_injection=True) if description else ""
+        condition = sanitize_text(condition, check_injection=True) if condition else ""
 
         # Verify profile exists
         try:

@@ -160,7 +160,10 @@ def register_tools(mcp):
             if edit_content:
                 if len(edit_content) > 500:
                     return {"error": f"Edited content too long ({len(edit_content)} chars). Max 500."}
-                update_data["content"] = edit_content
+                is_safe, error_msg, _ = check_injection_and_sanitize(edit_content, "edit_content")
+                if not is_safe:
+                    return {"error": error_msg}
+                update_data["content"] = sanitize_text(edit_content, check_injection=True)
 
             response = get_supabase().table("assistant_posts").update(update_data).eq("id", post_id).execute()
 

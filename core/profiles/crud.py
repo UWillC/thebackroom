@@ -3,7 +3,7 @@ The Backroom - Profiles Module
 """
 
 from utils import (
-    get_supabase, load_profiles, format_profile_summary,
+    get_supabase, get_supabase_with_auth, load_profiles, format_profile_summary,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, sanitize_text, sanitize_list,
@@ -421,7 +421,7 @@ def register_tools(mcp):
             return {"error": "No fields to update. Provide at least one field."}
 
         try:
-            response = get_supabase().table("profiles").update(update_data).eq("id", profile_id).execute()
+            response = get_supabase_with_auth().table("profiles").update(update_data).eq("id", profile_id).execute()
 
             if response.data:
                 return {

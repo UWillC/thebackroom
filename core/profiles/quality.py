@@ -3,7 +3,7 @@ The Backroom - Profiles Module
 """
 
 from utils import (
-    get_supabase, load_profiles, format_profile_summary,
+    get_supabase, get_supabase_with_auth, load_profiles, format_profile_summary,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, sanitize_text, sanitize_list,
@@ -256,8 +256,8 @@ def register_tools(mcp):
                     "quality_feedback": str(all_suggestions[:3]),
                     "quality_checked_at": datetime.utcnow().isoformat()
                 }
-                get_supabase().table("profiles").update(update_data).eq("id", profile_id).execute()
-                result["saved_to_profile"] = True
+                _resp = get_supabase_with_auth().table("profiles").update(update_data).eq("id", profile_id).execute()
+                result["saved_to_profile"] = bool(_resp.data)
             except Exception as e:
                 result["saved_to_profile"] = False
                 result["save_error"] = str(e)

@@ -11,7 +11,7 @@ Usage:
 import os
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from supabase import create_client, Client
 
@@ -19,63 +19,170 @@ from supabase import create_client, Client
 CONFIG_DIR = Path.home() / ".config" / "thebackroom"
 SESSION_FILE = CONFIG_DIR / "session.json"
 
+# BUG-002 fix: sessions also mirrored to Supabase (service-role only table)
+# so they survive Render redeploys; expired sessions are auto-refreshed via
+# refresh_token instead of being deleted.
+SESSION_TABLE = "mcp_sessions"
+REFRESH_BUFFER_SECONDS = 120
+
 
 def _ensure_config_dir():
     """Create config directory if it doesn't exist."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _load_session() -> Optional[dict]:
-    """Load session from file."""
-    if not SESSION_FILE.exists():
+def _get_service_client() -> Optional[Client]:
+    """Service-role client for the session mirror table (bypasses RLS)."""
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not service_role_key:
         return None
     try:
-        with open(SESSION_FILE, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
+        return create_client(supabase_url, service_role_key)
+    except Exception:
         return None
 
 
-def _save_session(session: dict):
-    """Save session to file."""
+def _db_save_session(session: dict):
+    """Best-effort mirror to DB. Failure is non-fatal (file still works)."""
+    client = _get_service_client()
+    if not client or not session.get("email"):
+        return
+    try:
+        client.table(SESSION_TABLE).upsert({
+            "email": session["email"],
+            "session": session,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as e:
+        print(f"Session DB mirror save failed (non-fatal): {e}")
+
+
+def _db_load_session() -> Optional[dict]:
+    """Restore most recent session from DB (after redeploy wiped the disk)."""
+    client = _get_service_client()
+    if not client:
+        return None
+    try:
+        result = client.table(SESSION_TABLE).select("session").order(
+            "updated_at", desc=True
+        ).limit(1).execute()
+        if result.data:
+            return result.data[0]["session"]
+    except Exception as e:
+        print(f"Session DB restore failed (non-fatal): {e}")
+    return None
+
+
+def _db_clear_sessions():
+    """Best-effort wipe of the DB mirror (logout)."""
+    client = _get_service_client()
+    if not client:
+        return
+    try:
+        client.table(SESSION_TABLE).delete().neq("email", "").execute()
+    except Exception as e:
+        print(f"Session DB clear failed (non-fatal): {e}")
+
+
+def _load_session() -> Optional[dict]:
+    """Load session from file; fall back to DB mirror after a redeploy."""
+    if SESSION_FILE.exists():
+        try:
+            with open(SESSION_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    # Disk is ephemeral on Render — after a deploy the file is gone,
+    # but the DB mirror survives. Restore and re-cache to file.
+    session = _db_load_session()
+    if session:
+        _save_session_file_only(session)
+    return session
+
+
+def _save_session_file_only(session: dict):
+    """Write session to local file cache."""
     _ensure_config_dir()
     with open(SESSION_FILE, "w") as f:
         json.dump(session, f, indent=2)
 
 
+def _save_session(session: dict):
+    """Save session to file + DB mirror."""
+    _save_session_file_only(session)
+    _db_save_session(session)
+
+
 def _clear_session():
-    """Remove session file."""
+    """Remove session file + DB mirror."""
     if SESSION_FILE.exists():
         SESSION_FILE.unlink()
+    _db_clear_sessions()
+
+
+def _session_expires_ts(session: dict) -> Optional[float]:
+    """Expiry as unix timestamp, or None if absent/unparseable."""
+    expires_at = session.get("expires_at")
+    if expires_at is None:
+        return None
+    try:
+        if isinstance(expires_at, (int, float)):
+            return float(expires_at)
+        if isinstance(expires_at, str):
+            return datetime.fromisoformat(
+                expires_at.replace("Z", "+00:00")
+            ).timestamp()
+    except (ValueError, TypeError):
+        return None
+    return None
+
+
+def _try_refresh(session: dict) -> Optional[dict]:
+    """Refresh an expiring session using its refresh token."""
+    refresh_token = session.get("refresh_token")
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_KEY", "")
+    if not refresh_token or not supabase_url or not supabase_key:
+        return None
+    try:
+        client = create_client(supabase_url, supabase_key)
+        response = client.auth.refresh_session(refresh_token)
+        if response and response.session:
+            session_data = {
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token,
+                "user_id": response.user.id if response.user else session.get("user_id"),
+                "email": response.user.email if response.user else session.get("email"),
+                "expires_at": response.session.expires_at,
+                "authenticated_at": session.get("authenticated_at"),
+                "refreshed_at": datetime.now(timezone.utc).isoformat(),
+            }
+            _save_session(session_data)
+            return session_data
+    except Exception as e:
+        print(f"Session auto-refresh failed: {e}")
+    return None
 
 
 def get_session() -> Optional[dict]:
     """
     Get current session if valid.
-    Returns None if no session or expired.
+
+    An expired (or nearly expired) access token is auto-refreshed via the
+    refresh token. The session is cleared only when refresh fails too.
     """
     session = _load_session()
     if not session:
         return None
 
-    # Check expiration
-    expires_at = session.get("expires_at")
-    if expires_at:
-        try:
-            if isinstance(expires_at, (int, float)):
-                # Unix timestamp
-                exp_time = datetime.fromtimestamp(expires_at)
-                if datetime.now() > exp_time:
-                    _clear_session()
-                    return None
-            elif isinstance(expires_at, str):
-                # ISO format string
-                exp_time = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-                if datetime.now(exp_time.tzinfo) > exp_time:
-                    _clear_session()
-                    return None
-        except (ValueError, TypeError):
-            pass
+    exp = _session_expires_ts(session)
+    if exp is not None and datetime.now(timezone.utc).timestamp() > exp - REFRESH_BUFFER_SECONDS:
+        refreshed = _try_refresh(session)
+        if refreshed:
+            return refreshed
+        _clear_session()
+        return None
 
     return session
 
@@ -391,7 +498,7 @@ def refresh_session() -> dict:
     Returns:
         dict with new session info
     """
-    session = get_session()
+    session = _load_session()
 
     if not session:
         return {
@@ -399,45 +506,15 @@ def refresh_session() -> dict:
             "error": "No session to refresh"
         }
 
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-
-    if not supabase_url or not supabase_key:
+    refreshed = _try_refresh(session)
+    if refreshed:
         return {
-            "success": False,
-            "error": "SUPABASE_URL and SUPABASE_KEY not configured"
+            "success": True,
+            "message": "Session refreshed",
+            "expires_at": refreshed.get("expires_at")
         }
 
-    try:
-        client = create_client(supabase_url, supabase_key)
-        response = client.auth.refresh_session(session.get("refresh_token"))
-
-        if response and response.session:
-            # Update session locally
-            session_data = {
-                "access_token": response.session.access_token,
-                "refresh_token": response.session.refresh_token,
-                "user_id": response.user.id,
-                "email": response.user.email,
-                "expires_at": response.session.expires_at,
-                "authenticated_at": session.get("authenticated_at"),
-                "refreshed_at": datetime.now().isoformat()
-            }
-            _save_session(session_data)
-
-            return {
-                "success": True,
-                "message": "Session refreshed",
-                "expires_at": response.session.expires_at
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Failed to refresh session"
-            }
-
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Refresh failed: {e}"
-        }
+    return {
+        "success": False,
+        "error": "Failed to refresh session"
+    }

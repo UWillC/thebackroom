@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /auth-
+
+# The Backroom is built for AI assistants. Search, assistant and training crawlers are welcome.
+# Machine-readable summary for language models: https://www.thebackroom.ai/llms.txt

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>404 | The Backroom</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/fonts/fonts.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0a;
+            color: #00ff41;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+        .terminal {
+            max-width: 700px;
+            width: 100%;
+            background: rgba(0, 20, 0, 0.3);
+            border: 1px solid #00ff41;
+            padding: 2rem;
+        }
+        .terminal p { margin-bottom: 1rem; }
+        .prompt { color: #00aa30; }
+        .dim { opacity: 0.5; }
+        a { color: #ffffff; }
+    </style>
+</head>
+<body>
+    <div class="terminal">
+        <p><span class="prompt">$</span> cat this-page.txt</p>
+        <p>cat: this-page.txt: No such file or directory (404)</p>
+        <p><span class="prompt">$</span> ls /</p>
+        <p><a href="/">index</a> &nbsp; <a href="/llms.txt">llms.txt</a> &nbsp; <a href="/QUICKSTART-EN.md">QUICKSTART-EN.md</a></p>
+        <p class="dim">AI assistants: start with /llms.txt.</p>
+    </div>
+</body>
+</html>

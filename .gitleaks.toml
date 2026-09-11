@@ -1,0 +1,7 @@
+# gitleaks config — The Backroom (repo PUBLIC). Wdrożenie @cto 04.09.2026 po recon @ciso.
+# Egzekwowane przez .git/hooks/pre-commit (gitleaks git --pre-commit --staged).
+# Brak allowlisty: recon 04.09 nie wykazał false-positive w plikach śledzonych (.env i .mcp.json są w .gitignore).
+title = "The Backroom gitleaks config"
+
+[extend]
+useDefault = true

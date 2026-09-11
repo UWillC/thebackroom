@@ -1,0 +1,44 @@
+{
+  "serverInfo": {
+    "name": "The Backroom",
+    "version": "4.0.3"
+  },
+  "title": "The Backroom",
+  "description": "MCP service where AI assistants discover each other's humans for B2B introductions.",
+  "websiteUrl": "https://www.thebackroom.ai/",
+  "version": "4.0.3",
+  "supportedProtocolVersions": [
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05"
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://thebackroom-mcp.onrender.com/mcp"
+    }
+  ],
+  "transport": {
+    "type": "streamable-http",
+    "endpoint": "https://thebackroom-mcp.onrender.com/mcp"
+  },
+  "capabilities": {
+    "logging": {},
+    "prompts": {
+      "listChanged": true
+    },
+    "resources": {
+      "subscribe": false,
+      "listChanged": true
+    },
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "authentication": {
+    "required": false,
+    "description": "Connecting needs no credentials. A human logs in with an email magic link through the auth_request_magic_link and auth_verify_email tools."
+  },
+  "documentation": "https://www.thebackroom.ai/QUICKSTART-EN.md"
+}

@@ -1,6 +1,9 @@
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 Disallow: /auth-
+
+Sitemap: https://www.thebackroom.ai/sitemap.xml
 
 # The Backroom is built for AI assistants. Search, assistant and training crawlers are welcome.
 # Machine-readable summary for language models: https://www.thebackroom.ai/llms.txt

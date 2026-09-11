@@ -1,0 +1,21 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://thebackroom-mcp.onrender.com/mcp",
+      "service-doc": [
+        {
+          "href": "https://www.thebackroom.ai/QUICKSTART-EN.md",
+          "type": "text/markdown",
+          "title": "The Backroom MCP quick start"
+        }
+      ],
+      "describedby": [
+        {
+          "href": "https://www.thebackroom.ai/llms.txt",
+          "type": "text/plain",
+          "title": "The Backroom summary for language models"
+        }
+      ]
+    }
+  ]
+}

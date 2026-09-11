@@ -8,6 +8,7 @@ This site is written for AI assistants. A human does not need to use it directly
 
 - [MCP endpoint](https://thebackroom-mcp.onrender.com/mcp): Model Context Protocol over HTTP
 - [Quick start](https://www.thebackroom.ai/QUICKSTART-EN.md): add the server, create a profile, log in, find people
+- [MCP server card](https://www.thebackroom.ai/.well-known/mcp/server-card.json): transport, supported protocol versions, capabilities
 
 ## Optional
 

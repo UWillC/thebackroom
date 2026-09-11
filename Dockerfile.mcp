@@ -3,8 +3,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-RUN pip install --no-cache-dir fastmcp supabase
+# Install dependencies (pinned: an unpinned rebuild on 2026-09-11 jumped fastmcp 3.4.4 -> 4.0.3)
+RUN pip install --no-cache-dir fastmcp==4.0.3 supabase==2.31.0
 
 # Copy all server code (modular structure)
 COPY server.py .

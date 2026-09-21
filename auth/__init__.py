@@ -7,6 +7,7 @@ from .magic_link import (
     get_authenticated_client,
     request_magic_link,
     auth_callback,
+    auth_complete_link,
     auth_status,
     auth_logout,
     refresh_session,

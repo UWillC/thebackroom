@@ -438,12 +438,14 @@ if __name__ == "__main__":
         # HTTP transport for remote deployment
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
+        os.environ["MCP_TRANSPORT"] = "http"  # auth module: per-client sessions
         print(f"Starting The Backroom MCP Server (HTTP) on {host}:{port}")
         mcp.run(transport="http", host=host, port=port)
     elif "--sse" in sys.argv or os.environ.get("MCP_TRANSPORT") == "sse":
         # SSE transport (legacy, for older clients)
         host = os.environ.get("HOST", "0.0.0.0")
         port = int(os.environ.get("PORT", 8000))
+        os.environ["MCP_TRANSPORT"] = "sse"  # auth module: per-client sessions
         print(f"Starting The Backroom MCP Server (SSE) on {host}:{port}")
         mcp.run(transport="sse", host=host, port=port)
     else:

@@ -2,7 +2,21 @@
 The Backroom - Authentication Module
 Magic Link auth using Supabase Auth
 
-Session stored in ~/.config/thebackroom/session.json
+Sessions are PER CLIENT (security fix 2026-09-21):
+
+- Remote transports (http / sse): the server is public and shared, so a
+  session belongs to exactly one MCP client. The client is identified by a
+  secret only it holds: the `Authorization: Bearer <secret>` header from its
+  MCP config (persistent across reconnects), or, without one, its
+  `Mcp-Session-Id` (lives as long as the connection). Only a SHA-256 of that
+  secret is stored, next to the Supabase session, in the service-role-only
+  table `mcp_client_sessions`. A request without such a secret is anonymous.
+- stdio transport (local, single user): session file in
+  ~/.config/thebackroom/session.json, as before.
+
+Logging in always needs proof of mailbox possession: the one-time token from
+the emailed magic link (auth_complete_link) or the tokens from the redirect
+URL (auth_callback). Knowing an email address is never enough.
 
 Usage:
     from auth import get_authenticated_client, request_magic_link, auth_status
@@ -10,21 +24,76 @@ Usage:
 
 import os
 import json
+import hashlib
+import threading
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Tuple
+from urllib.parse import urlparse, parse_qs
 from supabase import create_client, Client
+from supabase.lib.client_options import SyncClientOptions
 
-# Session file location (like AIBL Network)
+# Local (stdio) session file
 CONFIG_DIR = Path.home() / ".config" / "thebackroom"
 SESSION_FILE = CONFIG_DIR / "session.json"
 
-# BUG-002 fix: sessions also mirrored to Supabase (service-role only table)
-# so they survive Render redeploys; expired sessions are auto-refreshed via
-# refresh_token instead of being deleted.
-SESSION_TABLE = "mcp_sessions"
+# Remote (http / sse) per-client sessions: service-role only table
+CLIENT_SESSION_TABLE = "mcp_client_sessions"
 REFRESH_BUFFER_SECONDS = 120
+MIN_CLIENT_SECRET_LENGTH = 32
+SID_SESSION_MAX_AGE_HOURS = 24
 
+# One refresh at a time per client: Supabase rotates refresh tokens, a second
+# parallel refresh with the same token fails with "Already Used".
+_refresh_locks: dict = {}
+_refresh_locks_guard = threading.Lock()
+
+
+# ============== CLIENT IDENTITY ==============
+
+def _is_remote() -> bool:
+    """True when the server runs on a shared network transport."""
+    return os.environ.get("MCP_TRANSPORT", "").lower() in ("http", "sse")
+
+
+def _request_headers() -> dict:
+    """Headers of the current MCP HTTP request ({} outside a request)."""
+    try:
+        from fastmcp.server.dependencies import get_http_headers
+        return {k.lower(): v for k, v in get_http_headers(include_all=True).items()}
+    except Exception:
+        return {}
+
+
+def _client_key() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Identify the calling client by a secret only it holds.
+
+    Returns (key_hash, kind): kind is "bearer" or "sid". (None, None) means
+    the caller is anonymous.
+    """
+    headers = _request_headers()
+    authorization = headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        secret = authorization[7:].strip()
+        if len(secret) >= MIN_CLIENT_SECRET_LENGTH:
+            digest = hashlib.sha256(("bearer:" + secret).encode()).hexdigest()
+            return digest, "bearer"
+    session_id = headers.get("mcp-session-id", "").strip()
+    if len(session_id) >= 16:
+        digest = hashlib.sha256(("sid:" + session_id).encode()).hexdigest()
+        return digest, "sid"
+    return None, None
+
+
+def _lock_for(key: str) -> threading.Lock:
+    with _refresh_locks_guard:
+        if key not in _refresh_locks:
+            _refresh_locks[key] = threading.Lock()
+        return _refresh_locks[key]
+
+
+# ============== STORAGE ==============
 
 def _ensure_config_dir():
     """Create config directory if it doesn't exist."""
@@ -32,7 +101,7 @@ def _ensure_config_dir():
 
 
 def _get_service_client() -> Optional[Client]:
-    """Service-role client for the session mirror table (bypasses RLS)."""
+    """Service-role client for the session table (bypasses RLS)."""
     supabase_url = os.environ.get("SUPABASE_URL", "")
     service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
     if not supabase_url or not service_role_key:
@@ -43,83 +112,116 @@ def _get_service_client() -> Optional[Client]:
         return None
 
 
-def _db_save_session(session: dict):
-    """Best-effort mirror to DB. Failure is non-fatal (file still works)."""
-    client = _get_service_client()
-    if not client or not session.get("email"):
-        return
-    try:
-        client.table(SESSION_TABLE).upsert({
-            "email": session["email"],
-            "session": session,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }).execute()
-    except Exception as e:
-        print(f"Session DB mirror save failed (non-fatal): {e}")
+def _anon_client() -> Optional[Client]:
+    """Fresh anon client for auth calls. Implicit flow: the emailed token can
+    be verified server-side; no auto-refresh thread, no shared state."""
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_KEY", "")
+    if not supabase_url or not supabase_key:
+        return None
+    return create_client(
+        supabase_url,
+        supabase_key,
+        options=SyncClientOptions(
+            flow_type="implicit",
+            auto_refresh_token=False,
+            persist_session=False,
+        ),
+    )
 
 
-def _db_load_session() -> Optional[dict]:
-    """Restore most recent session from DB (after redeploy wiped the disk)."""
+def _load_session() -> Optional[dict]:
+    """Session of the calling client, or None."""
+    if not _is_remote():
+        if SESSION_FILE.exists():
+            try:
+                with open(SESSION_FILE, "r") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return None
+        return None
+
+    key, _kind = _client_key()
+    if not key:
+        return None
     client = _get_service_client()
     if not client:
         return None
     try:
-        result = client.table(SESSION_TABLE).select("session").order(
-            "updated_at", desc=True
+        result = client.table(CLIENT_SESSION_TABLE).select("session").eq(
+            "client_key_hash", key
         ).limit(1).execute()
         if result.data:
             return result.data[0]["session"]
     except Exception as e:
-        print(f"Session DB restore failed (non-fatal): {e}")
+        print(f"Client session load failed: {type(e).__name__}")
     return None
 
 
-def _db_clear_sessions():
-    """Best-effort wipe of the DB mirror (logout)."""
+def _save_session(session: dict) -> bool:
+    """Store the session for the calling client only. False = not stored."""
+    if not _is_remote():
+        _ensure_config_dir()
+        with open(SESSION_FILE, "w") as f:
+            json.dump(session, f, indent=2)
+        os.chmod(SESSION_FILE, 0o600)
+        return True
+
+    key, kind = _client_key()
+    client = _get_service_client()
+    if not key or not client:
+        return False
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        client.table(CLIENT_SESSION_TABLE).upsert({
+            "client_key_hash": key,
+            "kind": kind,
+            "email": session.get("email"),
+            "user_id": session.get("user_id"),
+            "session": session,
+            "updated_at": now,
+        }).execute()
+        return True
+    except Exception as e:
+        print(f"Client session save failed: {type(e).__name__}")
+        return False
+
+
+def _clear_session():
+    """Remove the calling client's session. Never touches other clients."""
+    if not _is_remote():
+        if SESSION_FILE.exists():
+            SESSION_FILE.unlink()
+        return
+    key, _kind = _client_key()
+    client = _get_service_client()
+    if not key or not client:
+        return
+    try:
+        client.table(CLIENT_SESSION_TABLE).delete().eq(
+            "client_key_hash", key
+        ).execute()
+    except Exception as e:
+        print(f"Client session clear failed: {type(e).__name__}")
+
+
+def _purge_stale_sid_sessions():
+    """Connection-bound sessions die with the connection; sweep leftovers."""
     client = _get_service_client()
     if not client:
         return
     try:
-        client.table(SESSION_TABLE).delete().neq("email", "").execute()
-    except Exception as e:
-        print(f"Session DB clear failed (non-fatal): {e}")
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=SID_SESSION_MAX_AGE_HOURS)
+        ).isoformat()
+        client.table(CLIENT_SESSION_TABLE).delete().eq("kind", "sid").lt(
+            "updated_at", cutoff
+        ).execute()
+    except Exception:
+        pass
 
 
-def _load_session() -> Optional[dict]:
-    """Load session from file; fall back to DB mirror after a redeploy."""
-    if SESSION_FILE.exists():
-        try:
-            with open(SESSION_FILE, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
-    # Disk is ephemeral on Render — after a deploy the file is gone,
-    # but the DB mirror survives. Restore and re-cache to file.
-    session = _db_load_session()
-    if session:
-        _save_session_file_only(session)
-    return session
-
-
-def _save_session_file_only(session: dict):
-    """Write session to local file cache."""
-    _ensure_config_dir()
-    with open(SESSION_FILE, "w") as f:
-        json.dump(session, f, indent=2)
-
-
-def _save_session(session: dict):
-    """Save session to file + DB mirror."""
-    _save_session_file_only(session)
-    _db_save_session(session)
-
-
-def _clear_session():
-    """Remove session file + DB mirror."""
-    if SESSION_FILE.exists():
-        SESSION_FILE.unlink()
-    _db_clear_sessions()
-
+# ============== SESSION LIFECYCLE ==============
 
 def _session_expires_ts(session: dict) -> Optional[float]:
     """Expiry as unix timestamp, or None if absent/unparseable."""
@@ -138,26 +240,40 @@ def _session_expires_ts(session: dict) -> Optional[float]:
     return None
 
 
+def _needs_refresh(session: dict) -> bool:
+    exp = _session_expires_ts(session)
+    return exp is not None and (
+        datetime.now(timezone.utc).timestamp() > exp - REFRESH_BUFFER_SECONDS
+    )
+
+
+def _session_from_response(response, previous: Optional[dict] = None) -> Optional[dict]:
+    if not response or not getattr(response, "session", None):
+        return None
+    previous = previous or {}
+    user = getattr(response, "user", None)
+    return {
+        "access_token": response.session.access_token,
+        "refresh_token": response.session.refresh_token,
+        "user_id": user.id if user else previous.get("user_id"),
+        "email": user.email if user else previous.get("email"),
+        "expires_at": response.session.expires_at,
+        "authenticated_at": previous.get("authenticated_at")
+        or datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _try_refresh(session: dict) -> Optional[dict]:
     """Refresh an expiring session using its refresh token."""
     refresh_token = session.get("refresh_token")
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-    if not refresh_token or not supabase_url or not supabase_key:
+    client = _anon_client()
+    if not refresh_token or not client:
         return None
     try:
-        client = create_client(supabase_url, supabase_key)
         response = client.auth.refresh_session(refresh_token)
-        if response and response.session:
-            session_data = {
-                "access_token": response.session.access_token,
-                "refresh_token": response.session.refresh_token,
-                "user_id": response.user.id if response.user else session.get("user_id"),
-                "email": response.user.email if response.user else session.get("email"),
-                "expires_at": response.session.expires_at,
-                "authenticated_at": session.get("authenticated_at"),
-                "refreshed_at": datetime.now(timezone.utc).isoformat(),
-            }
+        session_data = _session_from_response(response, previous=session)
+        if session_data:
+            session_data["refreshed_at"] = datetime.now(timezone.utc).isoformat()
             _save_session(session_data)
             return session_data
     except Exception as e:
@@ -167,52 +283,66 @@ def _try_refresh(session: dict) -> Optional[dict]:
 
 def get_session() -> Optional[dict]:
     """
-    Get current session if valid.
+    Session of the calling client if valid, else None.
 
-    An expired (or nearly expired) access token is auto-refreshed via the
-    refresh token. The session is cleared only when refresh fails too.
+    An expired (or nearly expired) access token is refreshed via the refresh
+    token, one refresh at a time per client. The session is cleared only when
+    the refresh fails too.
     """
     session = _load_session()
     if not session:
         return None
+    if not _needs_refresh(session):
+        return session
 
-    exp = _session_expires_ts(session)
-    if exp is not None and datetime.now(timezone.utc).timestamp() > exp - REFRESH_BUFFER_SECONDS:
+    key, _kind = _client_key()
+    with _lock_for(key or "local"):
+        # Another request of the same client may have refreshed meanwhile.
+        session = _load_session()
+        if not session:
+            return None
+        if not _needs_refresh(session):
+            return session
         refreshed = _try_refresh(session)
         if refreshed:
             return refreshed
         _clear_session()
         return None
 
-    return session
-
 
 def get_authenticated_client() -> Optional[Client]:
     """
-    Get Supabase client with user authentication.
-    Returns None if not authenticated.
+    Supabase client acting as the calling client's user (RLS applies).
+    Returns None if the caller is not authenticated.
+
+    The user's JWT goes on the data API only. The auth state of the client is
+    left alone on purpose: set_session() may rotate the refresh token behind
+    our back, and the next refresh then fails with "Already Used".
     """
     session = get_session()
-    if not session:
+    if not session or not session.get("access_token"):
         return None
-
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-
-    if not supabase_url or not supabase_key:
+    client = _anon_client()
+    if not client:
         return None
-
     try:
-        client = create_client(supabase_url, supabase_key)
-        # Set session on client
-        client.auth.set_session(
-            access_token=session.get("access_token"),
-            refresh_token=session.get("refresh_token")
-        )
+        client.postgrest.auth(session["access_token"])
         return client
     except Exception as e:
-        print(f"Error creating authenticated client: {e}")
+        print(f"Error creating authenticated client: {type(e).__name__}")
         return None
+
+
+# ============== LOGIN ==============
+
+def _login_instructions() -> str:
+    return (
+        "Check your email. Do NOT click the link: copy the link address from "
+        "the email and give it to your assistant, which calls "
+        "auth_complete_link(link). The link carries a one-time token that "
+        "proves the mailbox is yours. If you already clicked it, request a "
+        "new link."
+    )
 
 
 def request_magic_link(email: str) -> dict:
@@ -225,33 +355,32 @@ def request_magic_link(email: str) -> dict:
     Returns:
         dict with status and message
     """
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-
-    if not supabase_url or not supabase_key:
+    client = _anon_client()
+    if not client:
         return {
             "success": False,
             "error": "SUPABASE_URL and SUPABASE_KEY not configured"
         }
+    if _is_remote() and not _client_key()[0]:
+        return {
+            "success": False,
+            "error": "This client cannot hold a session. Add an Authorization: "
+                     "Bearer <your own random secret, 32+ chars> header to the "
+                     "MCP server config and reconnect."
+        }
 
     try:
-        client = create_client(supabase_url, supabase_key)
-
-        # Request magic link (OTP via email)
-        response = client.auth.sign_in_with_otp({
+        client.auth.sign_in_with_otp({
             "email": email,
             "options": {
                 "should_create_user": True  # Auto-create user if doesn't exist
             }
         })
-
         return {
             "success": True,
             "message": f"Magic link sent to {email}",
-            "next_step": "Check your email, click the link, and return here. Say 'I clicked the link' and I'll verify your authentication.",
-            "note": "No need to copy anything - just click and come back!"
+            "next_step": _login_instructions(),
         }
-
     except Exception as e:
         return {
             "success": False,
@@ -259,12 +388,91 @@ def request_magic_link(email: str) -> dict:
         }
 
 
+def _finish_login(session_data: Optional[dict]) -> dict:
+    if not session_data:
+        return {"success": False, "error": "Invalid or already used token"}
+    if not _save_session(session_data):
+        return {
+            "success": False,
+            "error": "Verified, but this client cannot hold a session. Add an "
+                     "Authorization: Bearer <secret> header to the MCP server "
+                     "config, reconnect and request a new link."
+        }
+    if _is_remote():
+        _purge_stale_sid_sessions()
+    _key, kind = _client_key()
+    result = {
+        "success": True,
+        "authenticated": True,
+        "message": "Authentication successful!",
+        "user": {
+            "id": session_data.get("user_id"),
+            "email": session_data.get("email"),
+        },
+    }
+    if _is_remote() and kind == "sid":
+        result["note"] = (
+            "This session lives only as long as the current connection. For a "
+            "session that survives reconnects, add an Authorization: Bearer "
+            "<your own random secret, 32+ chars> header to the MCP server "
+            "config and log in once more."
+        )
+    return result
+
+
+def auth_complete_link(link: str) -> dict:
+    """
+    Complete authentication with the magic link from the email (not clicked).
+
+    Args:
+        link: The full link address copied from the email, or its token.
+
+    Returns:
+        dict with session info
+    """
+    client = _anon_client()
+    if not client:
+        return {
+            "success": False,
+            "error": "SUPABASE_URL and SUPABASE_KEY not configured"
+        }
+
+    link = (link or "").strip()
+    token_hash = link
+    otp_type = "magiclink"
+    if "://" in link:
+        try:
+            query = parse_qs(urlparse(link).query)
+        except ValueError:
+            return {"success": False, "error": "Could not read the link"}
+        token_hash = (query.get("token") or query.get("token_hash") or [""])[0]
+        otp_type = (query.get("type") or ["magiclink"])[0]
+    if otp_type not in ("magiclink", "signup", "email"):
+        otp_type = "magiclink"
+    if not token_hash or len(token_hash) < 20 or len(token_hash) > 512:
+        return {
+            "success": False,
+            "error": "No login token found. Copy the full link address from "
+                     "the email (right click, copy link)."
+        }
+
+    try:
+        response = client.auth.verify_otp({
+            "token_hash": token_hash,
+            "type": otp_type,
+        })
+    except Exception:
+        return {
+            "success": False,
+            "error": "Link invalid, expired or already used. Request a new "
+                     "one and do not click it before copying."
+        }
+    return _finish_login(_session_from_response(response))
+
+
 def auth_callback(access_token: str, refresh_token: str) -> dict:
     """
-    Complete authentication after clicking magic link.
-
-    After user clicks magic link, they get redirected with tokens.
-    Extract access_token and refresh_token from URL and call this.
+    Complete authentication with the tokens from the redirect URL.
 
     Args:
         access_token: The access token from redirect URL
@@ -273,63 +481,28 @@ def auth_callback(access_token: str, refresh_token: str) -> dict:
     Returns:
         dict with session info
     """
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-
-    if not supabase_url or not supabase_key:
+    client = _anon_client()
+    if not client:
         return {
             "success": False,
             "error": "SUPABASE_URL and SUPABASE_KEY not configured"
         }
 
     try:
-        client = create_client(supabase_url, supabase_key)
-
-        # Set the session
         response = client.auth.set_session(access_token, refresh_token)
-
-        if response and response.user:
-            # Save session locally
-            session_data = {
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "user_id": response.user.id,
-                "email": response.user.email,
-                "expires_at": response.session.expires_at if response.session else None,
-                "authenticated_at": datetime.now().isoformat()
-            }
-            _save_session(session_data)
-
-            return {
-                "success": True,
-                "message": "Authentication successful!",
-                "user": {
-                    "id": response.user.id,
-                    "email": response.user.email
-                },
-                "session_file": str(SESSION_FILE)
-            }
-        else:
-            return {
-                "success": False,
-                "error": "Invalid tokens"
-            }
-
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Authentication failed: {e}"
-        }
+    except Exception:
+        return {"success": False, "error": "Authentication failed: invalid tokens"}
+    # set_session may have rotated the tokens: store what the server returned.
+    return _finish_login(_session_from_response(response))
 
 
 def verify_auth_by_email(email: str) -> dict:
     """
-    Verify if a user is authenticated and create a server-side session.
+    Report whether the CALLING client is logged in as this email.
 
-    After user clicks magic link, this:
-    1. Checks if profile has auth_user_id (magic link was clicked)
-    2. Uses admin API to generate tokens server-side
-    3. Saves session to session.json for RLS-protected operations
+    Never creates a session. (Until 2026-09-21 this minted a full session for
+    any registered address with the service-role key: account takeover by
+    knowing an email.)
 
     Args:
         email: User's email address
@@ -337,105 +510,21 @@ def verify_auth_by_email(email: str) -> dict:
     Returns:
         dict with authentication status
     """
-    supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_KEY", "")
-    service_role_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-
-    if not supabase_url or not supabase_key:
-        return {
-            "authenticated": False,
-            "error": "Database not configured"
-        }
-
-    try:
-        client = create_client(supabase_url, supabase_key)
-
-        # Check if profile exists and has auth_user_id
-        result = client.table("profiles").select(
-            "id, name, email, auth_user_id"
-        ).eq("email", email).execute()
-
-        if not result.data:
-            return {
-                "authenticated": False,
-                "error": "No profile found with this email. Register first with register_profile()."
-            }
-
-        profile = result.data[0]
-
-        if not profile.get("auth_user_id"):
-            return {
-                "authenticated": False,
-                "message": "Profile exists but not yet authenticated. Click the magic link in your email.",
-                "profile_id": profile.get("id")
-            }
-
-        # Profile is linked to auth — now generate a server-side session
-        if not service_role_key:
-            # Fallback: return authenticated but warn about missing session
-            return {
-                "authenticated": True,
-                "message": "You are authenticated! (Note: SUPABASE_SERVICE_ROLE_KEY not set — RLS operations may fail)",
-                "profile_id": profile.get("id"),
-                "name": profile.get("name"),
-                "email": profile.get("email"),
-                "session_created": False
-            }
-
-        # Use admin API to generate magic link and exchange for session
-        admin_client = create_client(supabase_url, service_role_key)
-
-        # Generate a server-side magic link (not sent to user)
-        link_response = admin_client.auth.admin.generate_link({
-            "type": "magiclink",
-            "email": email
-        })
-
-        if link_response and hasattr(link_response, 'properties') and link_response.properties:
-            token_hash = link_response.properties.hashed_token
-
-            # Verify the OTP to get access/refresh tokens
-            session_response = client.auth.verify_otp({
-                "token_hash": token_hash,
-                "type": "magiclink"
-            })
-
-            if session_response and session_response.session:
-                # Save session locally
-                session_data = {
-                    "access_token": session_response.session.access_token,
-                    "refresh_token": session_response.session.refresh_token,
-                    "user_id": session_response.user.id,
-                    "email": session_response.user.email,
-                    "expires_at": session_response.session.expires_at,
-                    "authenticated_at": datetime.now().isoformat()
-                }
-                _save_session(session_data)
-
-                return {
-                    "authenticated": True,
-                    "message": "You are authenticated!",
-                    "profile_id": profile.get("id"),
-                    "name": profile.get("name"),
-                    "email": profile.get("email"),
-                    "session_created": True
-                }
-
-        # Fallback if admin token generation failed
+    session = get_session()
+    if session and (session.get("email") or "").lower() == (email or "").strip().lower():
         return {
             "authenticated": True,
-            "message": "You are authenticated! (Session generation failed — try auth_request_magic_link again)",
-            "profile_id": profile.get("id"),
-            "name": profile.get("name"),
-            "email": profile.get("email"),
-            "session_created": False
+            "message": "You are authenticated!",
+            "email": session.get("email"),
+            "session_created": True,
         }
-
-    except Exception as e:
-        return {
-            "authenticated": False,
-            "error": f"Verification failed: {e}"
-        }
+    return {
+        "authenticated": False,
+        "session_created": False,
+        "message": "Not authenticated on this client. Call "
+                   "auth_request_magic_link(email), then "
+                   "auth_complete_link(link). " + _login_instructions(),
+    }
 
 
 def auth_status() -> dict:
@@ -446,12 +535,12 @@ def auth_status() -> dict:
         dict with authentication info
     """
     session = get_session()
-
+    _key, kind = _client_key()
     if not session:
         return {
             "authenticated": False,
             "message": "Not authenticated. Use auth_request_magic_link(email) to start.",
-            "session_file": str(SESSION_FILE)
+            "client_identity": kind or ("local" if not _is_remote() else "none"),
         }
 
     return {
@@ -460,53 +549,42 @@ def auth_status() -> dict:
         "email": session.get("email"),
         "authenticated_at": session.get("authenticated_at"),
         "expires_at": session.get("expires_at"),
-        "session_file": str(SESSION_FILE)
+        "client_identity": kind or "local",
     }
 
 
 def auth_logout() -> dict:
     """
-    Log out and clear session.
+    Log out the calling client and clear its session.
 
     Returns:
         dict with status
     """
-    session = get_session()
-
-    if session:
-        # Try to sign out from Supabase
-        try:
-            client = get_authenticated_client()
-            if client:
-                client.auth.sign_out()
-        except Exception:
-            pass  # Continue with local logout even if remote fails
-
     _clear_session()
-
     return {
         "success": True,
-        "message": "Logged out successfully",
-        "session_file": str(SESSION_FILE)
+        "message": "Logged out successfully"
     }
 
 
 def refresh_session() -> dict:
     """
-    Refresh the current session using refresh token.
+    Refresh the calling client's session using its refresh token.
 
     Returns:
         dict with new session info
     """
     session = _load_session()
-
     if not session:
         return {
             "success": False,
             "error": "No session to refresh"
         }
 
-    refreshed = _try_refresh(session)
+    key, _kind = _client_key()
+    with _lock_for(key or "local"):
+        session = _load_session() or session
+        refreshed = _try_refresh(session)
     if refreshed:
         return {
             "success": True,

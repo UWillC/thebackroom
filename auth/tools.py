@@ -9,6 +9,7 @@ from auth import (
     auth_logout as _auth_logout,
     refresh_session as _refresh_session,
     verify_auth_by_email as _verify_auth_by_email,
+    auth_complete_link as _auth_complete_link,
 )
 
 
@@ -20,15 +21,14 @@ def register_tools(mcp):
         """
         Request a magic link to authenticate via email.
 
-        Use this to start the authentication process. A magic link will be
-        sent to your email. After the user clicks the link, use
-        auth_verify_email() to confirm authentication.
-
         Flow:
-        1. Call this with user's email
-        2. User checks email and clicks the magic link
-        3. User returns and says "I clicked" or "I'm logged in"
-        4. Call auth_verify_email() to confirm
+        1. Call this with the user's email
+        2. The user opens the email and COPIES the link address WITHOUT
+           clicking it (right click, copy link)
+        3. Call auth_complete_link(link) with the copied link
+
+        The link carries a one-time token: it proves the mailbox belongs to
+        the user and is useless after the first use.
 
         Args:
             email: Your email address (must match your profile email)
@@ -41,18 +41,36 @@ def register_tools(mcp):
         return _request_magic_link(email)
 
     @mcp.tool
-    def auth_verify_email(email: str) -> dict:
+    def auth_complete_link(link: str) -> dict:
         """
-        Verify if user is authenticated after clicking magic link.
+        Complete authentication with the magic link copied from the email.
 
-        Use this after the user says they clicked the magic link.
-        Checks if their profile has been linked to auth.
+        The link must NOT have been clicked (clicking uses up its one-time
+        token). The session is bound to this MCP client only.
 
         Args:
-            email: The email address used for magic link
+            link: The full link address from the email
 
         Returns:
-            Authentication status with profile info if authenticated
+            Session info if successful
+        """
+        if not link:
+            return {"error": "link is required"}
+        return _auth_complete_link(link)
+
+    @mcp.tool
+    def auth_verify_email(email: str) -> dict:
+        """
+        Check whether THIS client is logged in as the given email.
+
+        Read-only: it never creates a session. To log in use
+        auth_request_magic_link(email) and auth_complete_link(link).
+
+        Args:
+            email: The email address to check
+
+        Returns:
+            Authentication status
         """
         if not email or "@" not in email:
             return {"error": "Invalid email address"}
@@ -61,10 +79,11 @@ def register_tools(mcp):
     @mcp.tool
     def auth_complete(access_token: str, refresh_token: str) -> dict:
         """
-        Complete authentication after clicking the magic link.
+        Complete authentication with tokens from the redirect URL.
 
-        After you click the magic link in your email, you'll be redirected
-        to a URL containing tokens. Extract them and use this tool.
+        Fallback for a link that was already clicked: the browser address
+        after the redirect contains access_token and refresh_token. Prefer
+        auth_complete_link (one-time token) when possible.
 
         Args:
             access_token: The access_token from the redirect URL

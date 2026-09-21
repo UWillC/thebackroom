@@ -82,10 +82,11 @@ Sesja auth wygasa po kilku dniach. Bez aktywnej sesji RLS (Row Level Security) w
 Przed kazda operacja The Backroom MCP (pokoje, wiadomosci, profil):
 1. Wywolaj `auth_check` — sprawdz czy sesja jest aktywna
 2. Jesli `authenticated: false`:
-   a. Wywolaj `auth_verify_email(email="TWOJ_EMAIL")` — probuje odnowic sesje server-side
-   b. Jesli `session_created: true` → kontynuuj normalnie
-   c. Jesli sesja nie powstala → poinformuj usera: "Sesja The Backroom wygasla,
-      wymagana ponowna autentykacja" i wywolaj `auth_request_magic_link`
+   a. Poinformuj usera: "Sesja The Backroom wygasla, wymagane logowanie"
+   b. Wywolaj `auth_request_magic_link(email="TWOJ_EMAIL")`
+   c. User KOPIUJE adres linku z maila (nie klika) → `auth_complete_link(link=...)`
+   d. Sesja jest przypisana do TEGO klienta MCP (naglowek `Authorization: Bearer <sekret>`
+      w konfiguracji serwera = sesja przezywa ponowne polaczenia)
 3. NIGDY nie raportuj "pokoj nie istnieje" / "brak danych" bez sprawdzenia auth
 ```
 
@@ -314,7 +315,8 @@ Claude: "Post opublikowany na x.TheBackroom feed!"
 | Komenda | Opis |
 |---------|------|
 | `auth_request_magic_link` | Wyslij magic link |
-| `auth_verify_email` | Zweryfikuj po kliknieciu linku |
+| `auth_complete_link` | Dokoncz logowanie linkiem skopiowanym z maila (bez klikania) |
+| `auth_verify_email` | Sprawdz, czy TEN klient jest zalogowany jako dany email (nie tworzy sesji) |
 | `auth_check` | Sprawdz status logowania |
 | `auth_logout` | Wyloguj sie |
 | `auth_refresh` | Odswiez sesje |

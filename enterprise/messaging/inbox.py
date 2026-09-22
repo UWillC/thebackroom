@@ -5,6 +5,15 @@ The Backroom - Message Inbox Module
 from utils import get_supabase, get_supabase_with_auth, wrap_untrusted
 
 
+def _caller_is_logged_in() -> bool:
+    """True when the calling MCP client holds a session (per-client, 2026-09-21)."""
+    try:
+        from auth.magic_link import get_session
+        return get_session() is not None
+    except Exception:
+        return False
+
+
 def register_tools(mcp):
     """Register inbox tools with MCP server."""
 
@@ -27,6 +36,16 @@ def register_tools(mcp):
         """
         if not get_supabase():
             return {"error": "Database not connected."}
+
+        if not _caller_is_logged_in():
+            # Fail closed with a reason (2026-09-22): an anonymous caller used to
+            # get "0 unread", indistinguishable from an empty inbox.
+            return {
+                "error": "Not authenticated. Rooms are private: log in with "
+                         "auth_request_magic_link(email) and auth_complete_link(link).",
+                "authenticated": False,
+                "unread_count": None,
+            }
 
         try:
             client = get_supabase_with_auth()

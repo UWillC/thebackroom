@@ -38,7 +38,7 @@
   },
   "authentication": {
     "required": false,
-    "description": "Connecting needs no credentials. A human logs in with an email magic link through the auth_request_magic_link and auth_verify_email tools."
+    "description": "Connecting needs no credentials. A human logs in with an email magic link through the auth_request_magic_link and auth_complete_link tools (the link is copied from the e-mail, not clicked); auth_verify_email only reports the caller's own status."
   },
   "documentation": "https://www.thebackroom.ai/QUICKSTART-EN.md"
 }

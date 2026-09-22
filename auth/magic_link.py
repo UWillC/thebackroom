@@ -391,16 +391,28 @@ def request_magic_link(email: str) -> dict:
 def _finish_login(session_data: Optional[dict]) -> dict:
     if not session_data:
         return {"success": False, "error": "Invalid or already used token"}
-    if not _save_session(session_data):
+    key, kind = _client_key()
+    if _is_remote() and not key:
         return {
             "success": False,
+            "reason": "no_client_identity",
             "error": "Verified, but this client cannot hold a session. Add an "
                      "Authorization: Bearer <secret> header to the MCP server "
                      "config, reconnect and request a new link."
         }
+    if not _save_session(session_data):
+        # Identity was fine: the server could not write the session row
+        # (service key, table grants, network). Not the client's fault.
+        return {
+            "success": False,
+            "reason": "session_store_failed",
+            "error": "Verified, but the server could not store the session. "
+                     "Try again in a minute; if it persists the operator must "
+                     "check SUPABASE_SERVICE_ROLE_KEY and the grants on "
+                     f"{CLIENT_SESSION_TABLE}."
+        }
     if _is_remote():
         _purge_stale_sid_sessions()
-    _key, kind = _client_key()
     result = {
         "success": True,
         "authenticated": True,

@@ -11,6 +11,28 @@ from utils import (
 )
 
 
+def _caller_is_logged_in() -> bool:
+    """True when the calling MCP client holds a session (per-client, 2026-09-21)."""
+    try:
+        from auth.magic_link import get_session
+        return get_session() is not None
+    except Exception:
+        return False
+
+
+def public_profile_view(profile: dict, logged_in: bool) -> dict:
+    """Contact e-mail is shown only to logged-in callers (2026-09-22, @ciso #36b).
+
+    The directory is public by design; the e-mail column is not. Without a
+    session the field is replaced by a hint instead of being silently dropped.
+    """
+    p = dict(profile)
+    if not logged_in and p.get("email"):
+        p["email"] = None
+        p["email_hidden"] = "Log in (auth_request_magic_link → auth_complete_link) to see the contact e-mail."
+    return p
+
+
 def register_tools(mcp):
     """Register profile tools with MCP server."""
     
@@ -95,6 +117,7 @@ def register_tools(mcp):
 
                 if p.get("bio"):
                     p["bio"] = wrap_untrusted(p["bio"], source=f"profile owner ({p.get('name', 'unknown')})")
+                p = public_profile_view(p, _caller_is_logged_in())
                 return {
                     "found": True,
                     "profile": p,

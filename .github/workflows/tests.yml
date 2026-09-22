@@ -18,3 +18,17 @@ jobs:
           python-version: "3.11"
       - run: pip install fastmcp==4.0.3 supabase==2.31.0 pytest
       - run: python -m pytest tests -q
+
+  deploy:
+    # Production deploy only after green tests (C5, 2026-09-22). Skipped until the
+    # RENDER_DEPLOY_HOOK secret exists; with it set, turn Render autoDeploy off.
+    needs: pytest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set: skipping (Render autoDeploy still on)"; exit 0; fi
+          curl -sf -X POST "$HOOK" && echo "deploy triggered"

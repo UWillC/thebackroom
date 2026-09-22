@@ -362,9 +362,33 @@ def register_tools(mcp):
             send_weekly_matches_email("snow") → sends to snow only
             send_weekly_matches_email() → sends to ALL eligible users
         """
-        client = get_supabase()
-        if not client:
+        if not get_supabase():
             return {"error": "Database not connected."}
+
+        # 2026-09-22 (@ciso #36b): the SQL function is no longer executable by
+        # the anon role (anyone with the public key could mail any profile).
+        # Only a logged-in caller may trigger it, only for their own profile,
+        # and the call goes through the server's service client.
+        try:
+            from auth.magic_link import get_session, _get_service_client
+        except Exception:
+            get_session = lambda: None  # noqa: E731
+            _get_service_client = lambda: None  # noqa: E731
+        session = get_session()
+        if not session:
+            return {"error": "Not authenticated. Log in first (auth_request_magic_link → auth_complete_link)."}
+        if not profile_id:
+            return {"error": "profile_id is required (sending to everyone is done by the weekly job, not by a tool)."}
+        try:
+            owner = get_supabase().table("profiles").select("email").eq("id", profile_id).execute()
+        except Exception as e:
+            return {"error": f"Failed to check profile: {e}"}
+        owner_email = (owner.data[0].get("email") if owner.data else None) or ""
+        if owner_email.lower() != (session.get("email") or "").lower():
+            return {"error": "You can only send the weekly matches e-mail to your own profile."}
+        client = _get_service_client()
+        if not client:
+            return {"error": "Server e-mail path unavailable (service client not configured)."}
 
         try:
             if profile_id:

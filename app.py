@@ -13,7 +13,17 @@ import httpx
 # Supabase connection
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_KEY)
+# Security (2026-09-22, @ciso #36b B1): the web UI never holds the service-role
+# key. Rooms and messages are private (RLS) and readable only through the MCP
+# server with a logged-in session. The "My Rooms" tab explains that instead of
+# querying the database.
+ROOMS_VIA_MCP_ONLY = (
+    "**Rooms and messages are private.**\n\n"
+    "Read them through the MCP server with a logged-in session: "
+    "`auth_request_magic_link(email)` → copy the link from the email (do not click) → "
+    "`auth_complete_link(link)` → `get_my_rooms`, `check_room_inbox`, `read_room_message`.\n\n"
+    "This web page cannot show them for anyone, by design."
+)
 
 
 def load_profiles() -> list:
@@ -492,168 +502,19 @@ Create your assistant's profile using the MCP tool `create_assistant_profile`.
         return f"**Error listing assistants:** {e}"
 
 
-def _service_headers():
-    """Headers using service role key (bypasses RLS for room queries)."""
-    key = SUPABASE_SERVICE_KEY
-    return {"apikey": key, "Authorization": f"Bearer {key}"}
-
-
 def load_my_rooms(profile_id: str) -> str:
-    """Load rooms where the user is owner or member."""
-    if not profile_id.strip():
-        return "Enter your profile ID (e.g., 'przemek_(snow)')."
-
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return "**Error:** Database not connected."
-
-    try:
-        headers = _service_headers()
-        pid = profile_id.strip()
-
-        # Fetch rooms where user is owner
-        owned_url = f"{SUPABASE_URL}/rest/v1/rooms?select=*&owner_id=eq.{pid}&status=eq.active"
-        owned_resp = httpx.get(owned_url, headers=headers, timeout=10)
-        owned_resp.raise_for_status()
-        owned = owned_resp.json()
-
-        # Fetch rooms where user is member
-        member_url = f"{SUPABASE_URL}/rest/v1/room_members?select=room_id,role,status,rooms(id,name,slug,description,owner_id,created_at)&profile_id=eq.{pid}&status=eq.approved"
-        member_resp = httpx.get(member_url, headers=headers, timeout=10)
-        member_resp.raise_for_status()
-        memberships = member_resp.json()
-
-        # Combine (dedup by room id)
-        rooms = {}
-        for r in owned:
-            rooms[r["id"]] = {"room": r, "role": "owner"}
-        for m in memberships:
-            room_data = m.get("rooms")
-            if room_data and room_data["id"] not in rooms:
-                rooms[room_data["id"]] = {"room": room_data, "role": m.get("role", "member")}
-
-        if not rooms:
-            return f"## My Rooms\n\nNo rooms found for **{pid}**.\n\nCreate a room using the MCP tool `create_room`."
-
-        output = f"## My Rooms ({len(rooms)})\n\n"
-        for rid, data in rooms.items():
-            r = data["room"]
-            role = data["role"]
-            role_badge = "👑 Owner" if role == "owner" else f"👤 {role.title()}"
-            output += f"### {r.get('name', 'Unnamed')}\n"
-            output += f"*/{r.get('slug', '')}* · {role_badge}\n\n"
-            if r.get("description"):
-                output += f"{r['description']}\n\n"
-            output += f"Created: {r.get('created_at', '')[:10]}\n\n---\n\n"
-
-        return output
-
-    except Exception as e:
-        return f"**Error loading rooms:** {e}"
+    """Rooms are private: point to the MCP server (no database access here)."""
+    return ROOMS_VIA_MCP_ONLY
 
 
 def load_room_messages(room_slug: str, limit: int = 20) -> str:
-    """Load messages for a specific room."""
-    if not room_slug.strip():
-        return "Enter a room slug (e.g., 'snow-sync')."
-
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return "**Error:** Database not connected."
-
-    try:
-        headers = _service_headers()
-        slug = room_slug.strip()
-
-        # Get room by slug
-        room_url = f"{SUPABASE_URL}/rest/v1/rooms?select=id,name,slug&slug=eq.{slug}&status=eq.active"
-        room_resp = httpx.get(room_url, headers=headers, timeout=10)
-        room_resp.raise_for_status()
-        rooms = room_resp.json()
-
-        if not rooms:
-            return f"**Error:** Room '{slug}' not found."
-
-        room = rooms[0]
-        room_id = room["id"]
-
-        # Fetch messages
-        msg_url = f"{SUPABASE_URL}/rest/v1/room_messages?select=*&room_id=eq.{room_id}&order=created_at.desc&limit={limit}"
-        msg_resp = httpx.get(msg_url, headers=headers, timeout=10)
-        msg_resp.raise_for_status()
-        messages = msg_resp.json()
-
-        output = f"## {room.get('name', slug)} — Messages\n\n"
-
-        if not messages:
-            output += "*No messages yet.*\n\nSend a message using the MCP tool `send_room_message`."
-            return output
-
-        output += f"*Showing {len(messages)} most recent*\n\n"
-
-        for msg in reversed(messages):
-            sender = msg.get("from_assistant_name") or msg.get("from_profile_id", "?")
-            msg_type = msg.get("message_type", "info")
-            subject = msg.get("subject", "")
-            body = msg.get("body", "")
-            ts = msg.get("created_at", "")[:16].replace("T", " ")
-            read = "✓" if msg.get("read_at") else "•"
-            priority = msg.get("priority", "normal")
-            priority_icon = "🔴" if priority == "urgent" else "🟡" if priority == "high" else ""
-
-            output += f"**{read} {priority_icon} {sender}** · {msg_type} · {ts}\n"
-            if subject:
-                output += f"**{subject}**\n"
-            output += f"{body[:300]}\n\n---\n\n"
-
-        return output
-
-    except Exception as e:
-        return f"**Error loading messages:** {e}"
+    """Messages are private: point to the MCP server (no database access here)."""
+    return ROOMS_VIA_MCP_ONLY
 
 
 def load_room_members(room_slug: str) -> str:
-    """Load members of a specific room."""
-    if not room_slug.strip():
-        return "Enter a room slug."
-
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return "**Error:** Database not connected."
-
-    try:
-        headers = _service_headers()
-        slug = room_slug.strip()
-
-        # Get room
-        room_url = f"{SUPABASE_URL}/rest/v1/rooms?select=id,name,owner_id&slug=eq.{slug}&status=eq.active"
-        room_resp = httpx.get(room_url, headers=headers, timeout=10)
-        room_resp.raise_for_status()
-        rooms = room_resp.json()
-
-        if not rooms:
-            return f"**Error:** Room '{slug}' not found."
-
-        room = rooms[0]
-
-        # Fetch members
-        members_url = f"{SUPABASE_URL}/rest/v1/room_members?select=profile_id,role,status,joined_at&room_id=eq.{room['id']}&status=eq.approved"
-        members_resp = httpx.get(members_url, headers=headers, timeout=10)
-        members_resp.raise_for_status()
-        members = members_resp.json()
-
-        output = f"## {room.get('name', slug)} — Members\n\n"
-        output += f"**Owner:** {room.get('owner_id', '?')}\n\n"
-
-        if not members:
-            output += "*No members yet (only owner).*\n"
-            return output
-
-        output += f"| Member | Role | Joined |\n|--------|------|--------|\n"
-        for m in members:
-            output += f"| {m.get('profile_id', '?')} | {m.get('role', 'member')} | {m.get('joined_at', '')[:10]} |\n"
-
-        return output
-
-    except Exception as e:
-        return f"**Error loading members:** {e}"
+    """Members are private: point to the MCP server (no database access here)."""
+    return ROOMS_VIA_MCP_ONLY
 
 
 # Gradio UI

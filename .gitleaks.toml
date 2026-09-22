@@ -5,3 +5,16 @@ title = "The Backroom gitleaks config"
 
 [extend]
 useDefault = true
+
+# Allowlista 22.09.2026 (@cto, migracja z legacy JWT na nowy system kluczy Supabase).
+# `sb_publishable_…` jest kluczem PUBLICZNYM z definicji: Supabase nazywa go "publishable",
+# trafia do przeglądarki i już dziś jest serwowany w stronach wc2026/nfl2026/marvel.
+# Sekretem pozostaje `sb_secret_…` (tylko env serwera) i on MA być łapany przez gitleaks.
+[[rules]]
+id = "supabase-secret-key"
+description = "Supabase secret key (sb_secret_) must never be committed"
+regex = '''sb_secret_[A-Za-z0-9_\-]{8,}'''
+
+[allowlist]
+description = "Supabase publishable key is public by design (client-side), unlike sb_secret_"
+regexes = ['''sb_publishable_[A-Za-z0-9_\-]{8,}''']

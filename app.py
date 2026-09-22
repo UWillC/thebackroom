@@ -12,7 +12,12 @@ import httpx
 
 # Supabase connection
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+# Publishable key: public by design (it also sits in the tracker pages). The env
+# var still wins; the constant only keeps the Space working when the secret holds
+# a legacy anon key that is about to be disabled (2026-09-22 key migration).
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_is3sCrJ6f6z_P1Up9IPjiQ_FuI9IUaB"
+_key_env = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_KEY = _key_env if _key_env.startswith("sb_publishable_") else SUPABASE_PUBLISHABLE_KEY
 # Security (2026-09-22, @ciso #36b B1): the web UI never holds the service-role
 # key. Rooms and messages are private (RLS) and readable only through the MCP
 # server with a logged-in session. The "My Rooms" tab explains that instead of

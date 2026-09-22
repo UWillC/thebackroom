@@ -31,6 +31,24 @@ ROOMS_VIA_MCP_ONLY = (
 )
 
 
+def _rest_headers(json_body: bool = False) -> dict:
+    """Headers for direct PostgREST calls.
+
+    `Accept-Profile` is required: without it this project's REST default schema
+    is `graphql_public`, so every query answered with PGRST205 "table not found"
+    and the UI showed an empty network (fixed 2026-09-22).
+    """
+    h = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Accept-Profile": "public",
+    }
+    if json_body:
+        h["Content-Type"] = "application/json"
+        h["Content-Profile"] = "public"
+    return h
+
+
 def load_profiles() -> list:
     """Load all profiles from Supabase via REST API."""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -38,10 +56,7 @@ def load_profiles() -> list:
 
     try:
         url = f"{SUPABASE_URL}/rest/v1/profiles?select=*"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -177,10 +192,7 @@ def get_analytics(days: int = 7) -> str:
 
         # Fetch search logs
         url = f"{SUPABASE_URL}/rest/v1/search_logs?select=query,results_count&created_at=gte.{since_date}"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         logs = response.json()
@@ -236,10 +248,7 @@ def get_post_reactions_breakdown(post_id: str) -> str:
     """Get reactions breakdown for a post (e.g., '🔥3 💡2')."""
     try:
         url = f"{SUPABASE_URL}/rest/v1/post_reactions?select=reaction&post_id=eq.{post_id}"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=5)
         response.raise_for_status()
         reactions = response.json()
@@ -267,10 +276,7 @@ def get_assistant_feed(limit: int = 20) -> str:
     try:
         # Fetch from assistant_feed view
         url = f"{SUPABASE_URL}/rest/v1/assistant_feed?select=*&limit={limit}"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         posts = response.json()
@@ -335,11 +341,7 @@ def verify_email_ui(profile_id: str, token: str) -> str:
     try:
         # Call RPC function
         url = f"{SUPABASE_URL}/rest/v1/rpc/verify_email_token"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json"
-        }
+        headers = _rest_headers(json_body=True)
         data = {
             "p_profile_id": profile_id.strip(),
             "p_token": token.strip()
@@ -404,10 +406,7 @@ def check_verification_status(profile_id: str) -> str:
     try:
         # Fetch profile
         url = f"{SUPABASE_URL}/rest/v1/profiles?select=id,name,email,email_verified,notifications_enabled&id=eq.{profile_id.strip()}"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         profiles = response.json()
@@ -464,10 +463,7 @@ def list_assistants() -> str:
 
     try:
         url = f"{SUPABASE_URL}/rest/v1/assistant_profiles?select=*&is_active=eq.true"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
+        headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         assistants = response.json()

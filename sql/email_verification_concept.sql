@@ -1,0 +1,42 @@
+-- Email Verification Concept
+-- Data: 2026-02-05
+-- DRAFT - do implementacji w Faza B
+
+-- Dodaj pole do profiles
+-- ALTER TABLE profiles ADD COLUMN email_verified BOOLEAN DEFAULT false;
+-- ALTER TABLE profiles ADD COLUMN email_verification_token TEXT;
+-- ALTER TABLE profiles ADD COLUMN email_verification_sent_at TIMESTAMPTZ;
+
+-- Flow:
+-- 1. User podaje email
+-- 2. Generujemy token (UUID)
+-- 3. Wysyłamy email z linkiem: thebackroom.ai/verify?token=XXX
+-- 4. User klika → ustawiamy email_verified = true
+-- 5. Dopiero wtedy wysyłamy notyfikacje na ten email
+
+-- Trigger: Wyślij verification email
+-- CREATE OR REPLACE FUNCTION send_email_verification()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     IF NEW.email IS NOT NULL AND NEW.email_verified = false THEN
+--         -- Generate token
+--         NEW.email_verification_token := gen_random_uuid()::text;
+--         NEW.email_verification_sent_at := NOW();
+--
+--         -- Send verification email via Resend
+--         PERFORM net.http_post(
+--             url := 'https://api.resend.com/emails',
+--             headers := jsonb_build_object(...),
+--             body := jsonb_build_object(
+--                 'to', NEW.email,
+--                 'subject', 'Potwierdź email w The Backroom',
+--                 'html', 'Kliknij: <a href="https://thebackroom.ai/verify?token=' || NEW.email_verification_token || '">POTWIERDŹ</a>'
+--             )
+--         );
+--     END IF;
+--     RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql;
+
+-- Modyfikacja notification triggers:
+-- Wysyłaj notyfikacje TYLKO jeśli email_verified = true

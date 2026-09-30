@@ -32,7 +32,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 from supabase import create_client, Client
 from supabase.lib.client_options import SyncClientOptions
-from utils.magic_link_limiter import check_magic_link_allowed, client_ip
+from utils.magic_link_limiter import check_magic_link_allowed, client_ip_with_source
 
 # Local (stdio) session file
 CONFIG_DIR = Path.home() / ".config" / "thebackroom"
@@ -372,13 +372,15 @@ def request_magic_link(email: str) -> dict:
 
     # Rate limit before any e-mail goes out (fix 2026-09-29, fail-closed).
     # Local stdio has no client IP: only the per-e-mail limit applies there.
+    ip, ip_source = None, "local"
     try:
-        ip = client_ip(_request_headers()) if _is_remote() else None
+        if _is_remote():
+            ip, ip_source = client_ip_with_source(_request_headers())
     except Exception:
-        ip = None
+        ip, ip_source = None, "error"
     if _is_remote() and not ip:
         ip = "unknown"  # no IP header on a public server: one shared bucket
-    denied = check_magic_link_allowed(email, ip)
+    denied = check_magic_link_allowed(email, ip, ip_source=ip_source)
     if denied:
         return denied
 

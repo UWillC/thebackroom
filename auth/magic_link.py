@@ -32,6 +32,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 from supabase import create_client, Client
 from supabase.lib.client_options import SyncClientOptions
+from utils.magic_link_limiter import check_magic_link_allowed, client_ip
 
 # Local (stdio) session file
 CONFIG_DIR = Path.home() / ".config" / "thebackroom"
@@ -368,6 +369,18 @@ def request_magic_link(email: str) -> dict:
                      "Bearer <your own random secret, 32+ chars> header to the "
                      "MCP server config and reconnect."
         }
+
+    # Rate limit before any e-mail goes out (fix 2026-09-29, fail-closed).
+    # Local stdio has no client IP: only the per-e-mail limit applies there.
+    try:
+        ip = client_ip(_request_headers()) if _is_remote() else None
+    except Exception:
+        ip = None
+    if _is_remote() and not ip:
+        ip = "unknown"  # no IP header on a public server: one shared bucket
+    denied = check_magic_link_allowed(email, ip)
+    if denied:
+        return denied
 
     try:
         client.auth.sign_in_with_otp({

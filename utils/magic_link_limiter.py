@@ -55,7 +55,8 @@ def client_ip_with_source(headers: Dict[str, str]) -> Tuple[Optional[str], str]:
     Client IP as seen behind Render (Cloudflare in front).
 
     1. true-client-ip: set by Cloudflare in front of Render, not settable by
-       the client [VERIFY: community sources, no official Render doc found].
+       the client. Verified in production 2026-09-30: a request with a forged
+       True-Client-IP logged the caller's real address (Cloudflare overwrites).
     2. first X-Forwarded-For entry: Render puts the client first but APPENDS
        to a client-sent header, so this one is spoofable; the per-e-mail limit
        still holds when it is.

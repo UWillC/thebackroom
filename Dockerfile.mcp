@@ -18,6 +18,9 @@ COPY x/ ./x/
 ENV MCP_TRANSPORT=http
 ENV HOST=0.0.0.0
 ENV PORT=8000
+# print() is block-buffered without a TTY: security log lines (rate limiter)
+# reached Render minutes late or not at all (2026-09-30). Flush every line.
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 

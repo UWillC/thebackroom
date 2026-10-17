@@ -322,6 +322,41 @@ def validate_profile_id(profile_id: str) -> tuple[bool, str]:
     return True, ""
 
 
+# Profile IDs that only the operator may hold (impersonation of the service or staff).
+RESERVED_PROFILE_IDS = frozenset({
+    "admin", "administrator", "root", "system", "support", "help", "security",
+    "staff", "moderator", "mod", "official", "api", "null", "undefined",
+    "backroom", "thebackroom", "the_backroom",
+})
+# Latin letters that NFKD does not split into base + accent.
+_LATIN_EXTRA = str.maketrans({"ł": "l", "đ": "d", "ø": "o", "ß": "ss", "æ": "ae", "œ": "oe", "ı": "i"})
+
+
+def profile_id_from_name(name: str) -> tuple[str, str]:
+    """Build a profile ID from a display name. Returns (profile_id, error).
+
+    2026-10-17 (triage unknownews #9, @ceo → @cto, review @ciso): the ID used to be
+    name.lower() with spaces/dashes replaced, so a Cyrillic look-alike ("przemеk")
+    produced a different ID that renders like an existing one. Now: Latin accents are
+    folded to ASCII ("Paweł" -> "pawel"), anything else non-ASCII is rejected,
+    the result must pass validate_profile_id, and reserved IDs are refused.
+    """
+    import unicodedata
+
+    folded = unicodedata.normalize("NFKD", (name or "").strip().lower().translate(_LATIN_EXTRA))
+    folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Mn")
+    profile_id = folded.replace(" ", "_").replace("-", "_")
+
+    if not profile_id.isascii():
+        return "", "Name must use Latin letters (a-z), digits, spaces, '-', '_' or '()'."
+    ok, err = validate_profile_id(profile_id)
+    if not ok:
+        return "", err
+    if profile_id.strip("_()") in RESERVED_PROFILE_IDS:
+        return "", f"The name '{name}' is reserved. Choose a different name."
+    return profile_id, ""
+
+
 def validate_required(value: str, field_name: str) -> tuple[bool, str]:
     """Validate that a required field is not empty."""
     if not value or not value.strip():

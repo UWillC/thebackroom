@@ -18,6 +18,7 @@ from .validation import (
     sanitize_text,
     sanitize_list,
     validate_profile_id,
+    profile_id_from_name,
     validate_required,
     validate_input,
     wrap_untrusted,

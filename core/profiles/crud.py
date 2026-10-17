@@ -6,7 +6,7 @@ from utils import (
     get_supabase, get_supabase_with_auth, load_profiles, format_profile_summary,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
-    validate_input, validate_profile_id, sanitize_text, sanitize_list,
+    validate_input, validate_profile_id, profile_id_from_name, sanitize_text, sanitize_list,
     check_injection_and_sanitize, wrap_untrusted, LIMITS, MAX_TAGS, MAX_SKILLS, MAX_OFFERS,
 )
 
@@ -222,8 +222,10 @@ def register_tools(mcp):
         if len(tags_list) > MAX_TAGS:
             return {"error": f"Too many tags ({len(tags_list)}). Maximum: {MAX_TAGS}."}
 
-        # Generate ID from name (lowercase, no spaces)
-        profile_id = name.lower().replace(" ", "_").replace("-", "_")
+        # Generate ID from name: ASCII only, validated, not reserved (2026-10-17)
+        profile_id, id_error = profile_id_from_name(name)
+        if id_error:
+            return {"error": id_error}
 
         # Check if profile already exists
         try:

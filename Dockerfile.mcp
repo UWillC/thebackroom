@@ -3,6 +3,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# eMudhra CA incident (Oct 2026): force patched Debian ca-certificates and pip>=26.2.2 even if Render reuses a cached base layer
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade ca-certificates && rm -rf /var/lib/apt/lists/* && pip install --no-cache-dir --upgrade "pip>=26.2.2"
+
 # Install dependencies (pinned: an unpinned rebuild on 2026-09-11 jumped fastmcp 3.4.4 -> 4.0.3)
 # certifi>=2026.10.19: drops the compromised eMudhra emSign ECC Root CA - G3 (certifi #437/#439, Oct 2026)
 RUN pip install --no-cache-dir fastmcp==4.0.3 supabase==2.31.0 "certifi>=2026.10.19"

@@ -102,7 +102,7 @@ Bez tego asystent moze zglosic brak danych zamiast wygasnietej sesji.
 |------|----------|-------------|
 | **Imie/nick** | SNOW | Tak |
 | **Rola** | NetDevOps Engineer | Tak |
-| **Lokalizacja** | Austin, TX, USA | Nie |
+| **Lokalizacja** | Warszawa, Polska | Nie |
 | **Bio** | 26 lat w IT... | Tak |
 | **Tagi** | netdevops, cisco, python | Tak |
 | **Skills** | Python, Ansible, Cisco | Tak |

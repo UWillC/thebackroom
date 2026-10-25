@@ -42,14 +42,7 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
 -- Update existing demo profiles (optional)
 -- ============================================
 
-UPDATE profiles SET
-    location = 'Austin, TX, USA',
-    bio = 'Network engineer. Buduję narzędzia do automatyzacji sieci.',
-    tags = ARRAY['networking', 'automation', 'python', 'devops'],
-    offer_free = '15-min call o network automation - jak zacząć',
-    offer_condition = 'dla członków AI Biznes Lab',
-    preferred_contact = 'linkedin'
-WHERE id = 'snow';
+-- (demo UPDATE of a real member profile removed 2026-10-25: personal data does not belong in a public repo)
 
 -- ============================================
 -- Example of a rich profile insert

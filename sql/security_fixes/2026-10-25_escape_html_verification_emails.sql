@@ -1,5 +1,5 @@
 -- ============================================================
--- NOT APPLIED YET. Prepared 2026-10-25 (@cto), waiting for @ciso review + owner go.
+-- APPLIED 2026-10-25 ~10:20 EDT (apply_migration escape_html_verification_emails_2026_10_25) after @ciso PASS Z WARUNKAMI; post-apply md5 verified (02869da9… send, 9b56025c… resend).
 -- ROADMAP #19 "szybka łata" (S2-L2, SECURITY-AUDIT-2026-10-23-s2-run1.md, lead 2).
 --
 -- WHAT WAS WRONG:

@@ -7,3 +7,14 @@
 
 /.well-known/mcp/server-card.json
   Access-Control-Allow-Origin: *
+
+# Auth callback (ROADMAP #21, S2-L5): no inline script, only /auth-callback.js from our origin.
+# style-src keeps 'unsafe-inline' (page <style> block + style="" attributes in the JS templates).
+/auth/callback
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/auth-callback
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/auth-callback.html
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

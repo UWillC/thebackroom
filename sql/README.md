@@ -40,3 +40,21 @@ Rules:
 - `security_fixes/` = dated fixes; the file header says what was wrong and how it was verified.
 - Not kept here on purpose: one-off data scripts (test inserts, email fixes for a single profile,
   "clear all data") and state dumps. They contained personal data or are destructive by design.
+
+## W44 (2026-10-26): ROADMAP #19 rest + #20, NOT APPLIED
+
+Files (`security_fixes/`): `2026-10-26_w44_19_20_hardening.sql` (migration),
+`..._rollback.sql`, `2026-10-26_w44_live_snapshot.sql` (live bodies read 2026-10-26, md5-verified).
+Local proof: `tests/run_w44_local.sh` (postgres:17 in docker; 102 assertions + re-apply abort +
+rollback md5). Apply only after @ciso review + user "pchaj":
+
+1. Read-only pre-check: the migration's guard aborts by itself on drift (md5 of 10 functions).
+2. `apply_migration` name `w44_19_20_hardening_2026_10_26`, body = the migration file (one unit).
+3. Right after: merge branch `fix/w44-19-20` to `main` and push (CI -> Render MCP) and push the
+   HF Space. Until then the old code fails on `select *` / anon INSERT (minutes, 1 user).
+4. Post-apply checks (read-only): md5 of the 10 functions = values printed by run_w44_local.sh
+   ("md5 after"); `has_column_privilege('anon','public.profiles','email','SELECT')` = false;
+   `has_function_privilege('anon','public.resend_verification_email(text)','EXECUTE')` = false;
+   `has_function_privilege('anon','public.register_profile(text,text,text,text[],text[],text[],text,text,text[],text,text,text,text,text,text[])','EXECUTE')` = false
+   (Supabase default ACL grants new functions to anon: the file revokes it explicitly);
+   no INSERT policy on profiles; then one real registration through MCP with a `+alias` address.

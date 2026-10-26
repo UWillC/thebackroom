@@ -4,6 +4,7 @@ The Backroom - Profiles Module
 
 from utils import (
     get_supabase, get_supabase_with_auth, load_profiles, format_profile_summary,
+    get_service_client, get_profile_email, PUBLIC_PROFILE_COLUMNS,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, profile_id_from_name, sanitize_text, sanitize_list,
@@ -67,9 +68,13 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            response = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
+            response = get_supabase().table("profiles").select(PUBLIC_PROFILE_COLUMNS).eq("id", profile_id).execute()
             if response.data:
                 p = response.data[0]
+                # Contact e-mail for logged-in callers (#36b) is read server-side: the
+                # column is no longer readable with the public key (W44).
+                logged_in = _caller_is_logged_in()
+                p["email"] = (get_profile_email(profile_id) or None) if logged_in else None
 
                 # Build quality score display
                 score = p.get('quality_score')
@@ -117,7 +122,7 @@ def register_tools(mcp):
 
                 if p.get("bio"):
                     p["bio"] = wrap_untrusted(p["bio"], source=f"profile owner ({p.get('name', 'unknown')})")
-                p = public_profile_view(p, _caller_is_logged_in())
+                p = public_profile_view(p, logged_in)
                 return {
                     "found": True,
                     "profile": p,
@@ -237,40 +242,35 @@ def register_tools(mcp):
         except Exception as e:
             return {"error": f"Error checking existing profile: {e}"}
 
-        # Insert new profile
+        # Insert new profile through register_profile (SECURITY DEFINER, W44 #19): the
+        # function re-validates, enforces 1 profile per e-mail and the per-recipient mail limit.
+        # EXECUTE is granted to service_role only, so the call uses the server's service client.
         try:
-            profile_data = {
-                "id": profile_id,
-                "name": name,
-                "role": role,
-                "skills": skills_list,
-                "offers": offers_list,
-                "seeks": seeks_list,
+            service = get_service_client()
+            if not service:
+                return {"error": "Registration is unavailable (server service client not configured)."}
+            rpc_params = {
+                "p_id": profile_id,
+                "p_name": name,
+                "p_role": role,
+                "p_skills": skills_list,
+                "p_offers": offers_list,
+                "p_seeks": seeks_list,
+                "p_location": location or None,
+                "p_bio": bio or None,
+                "p_tags": tags_list or None,
+                "p_offer_free": offer_free or None,
+                "p_offer_condition": offer_condition or None,
+                "p_email": email or None,
+                "p_linkedin_url": linkedin_url or None,
+                "p_preferred_contact": preferred_contact or None,
+                "p_industry": industry_list or None,
             }
+            rpc_result = service.rpc("register_profile", rpc_params).execute().data or {}
+            if not rpc_result.get("success"):
+                return {"error": rpc_result.get("error") or "Failed to create profile. Please try again."}
 
-            # Add optional fields if provided
-            if location:
-                profile_data["location"] = location
-            if bio:
-                profile_data["bio"] = bio
-            if tags_list:
-                profile_data["tags"] = tags_list
-            if offer_free:
-                profile_data["offer_free"] = offer_free
-            if offer_condition:
-                profile_data["offer_condition"] = offer_condition
-            if email:
-                profile_data["email"] = email
-            if linkedin_url:
-                profile_data["linkedin_url"] = linkedin_url
-            if preferred_contact:
-                profile_data["preferred_contact"] = preferred_contact
-            if industry_list:
-                profile_data["industry"] = industry_list
-
-            response = get_supabase().table("profiles").insert(profile_data).execute()
-
-            if response.data:
+            if rpc_result.get("success"):
                 # Build profile display
                 profile_display = f"""
     ╔══════════════════════════════════════════════╗
@@ -397,7 +397,7 @@ def register_tools(mcp):
 
         # Check if profile exists
         try:
-            existing = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
+            existing = get_supabase().table("profiles").select("id").eq("id", profile_id).execute()
             if not existing.data:
                 return {"error": f"Profile '{profile_id}' not found. Use register_profile to create one."}
         except Exception as e:
@@ -446,7 +446,8 @@ def register_tools(mcp):
             return {"error": "No fields to update. Provide at least one field."}
 
         try:
-            response = get_supabase_with_auth().table("profiles").update(update_data).eq("id", profile_id).execute()
+            # .select("id"): the default representation is `*`, which includes revoked columns
+            response = get_supabase_with_auth().table("profiles").update(update_data).eq("id", profile_id).select("id").execute()
 
             if response.data:
                 return {

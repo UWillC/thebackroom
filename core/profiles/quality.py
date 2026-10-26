@@ -4,6 +4,7 @@ The Backroom - Profiles Module
 
 from utils import (
     get_supabase, get_supabase_with_auth, load_profiles, format_profile_summary,
+    PUBLIC_PROFILE_COLUMNS, get_profile_email,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, sanitize_text, sanitize_list,
@@ -40,7 +41,7 @@ def register_tools(mcp):
 
         # Get profile
         try:
-            response = get_supabase().table("profiles").select("*").eq("id", profile_id).execute()
+            response = get_supabase().table("profiles").select(PUBLIC_PROFILE_COLUMNS).eq("id", profile_id).execute()
             if not response.data:
                 return {"error": f"Profile '{profile_id}' not found."}
             profile = response.data[0]
@@ -256,7 +257,7 @@ def register_tools(mcp):
                     "quality_feedback": str(all_suggestions[:3]),
                     "quality_checked_at": datetime.utcnow().isoformat()
                 }
-                _resp = get_supabase_with_auth().table("profiles").update(update_data).eq("id", profile_id).execute()
+                _resp = get_supabase_with_auth().table("profiles").update(update_data).eq("id", profile_id).select("id").execute()
                 result["saved_to_profile"] = bool(_resp.data)
             except Exception as e:
                 result["saved_to_profile"] = False
@@ -379,11 +380,8 @@ def register_tools(mcp):
             return {"error": "Not authenticated. Log in first (auth_request_magic_link → auth_complete_link)."}
         if not profile_id:
             return {"error": "profile_id is required (sending to everyone is done by the weekly job, not by a tool)."}
-        try:
-            owner = get_supabase().table("profiles").select("email").eq("id", profile_id).execute()
-        except Exception as e:
-            return {"error": f"Failed to check profile: {e}"}
-        owner_email = (owner.data[0].get("email") if owner.data else None) or ""
+        # profiles.email is not readable with the public key (W44): read it server-side
+        owner_email = get_profile_email(profile_id)
         if owner_email.lower() != (session.get("email") or "").lower():
             return {"error": "You can only send the weekly matches e-mail to your own profile."}
         client = _get_service_client()

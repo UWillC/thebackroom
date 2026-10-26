@@ -18,6 +18,15 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_PUBLISHABLE_KEY = "sb_publishable_is3sCrJ6f6z_P1Up9IPjiQ_FuI9IUaB"
 _key_env = os.environ.get("SUPABASE_KEY", "")
 SUPABASE_KEY = _key_env if _key_env.startswith("sb_publishable_") else SUPABASE_PUBLISHABLE_KEY
+
+# Columns the public key may read (W44, sql/security_fixes/2026-10-26_w44_19_20_hardening.sql);
+# same list as utils/supabase.py PUBLIC_PROFILE_COLUMNS, without spaces for the query string.
+PUBLIC_PROFILE_COLUMNS = (
+    "id,name,role,industry,skills,offers,seeks,assistant_endpoint,preferences,created_at,"
+    "updated_at,location,bio,tags,offer_free,offer_condition,preferred_contact,linkedin_url,"
+    "quality_score,quality_feedback,quality_checked_at,email_verified,"
+    "email_verification_sent_at,notifications_enabled"
+)
 # Security (2026-09-22, @ciso #36b B1): the web UI never holds the service-role
 # key. Rooms and messages are private (RLS) and readable only through the MCP
 # server with a logged-in session. The "My Rooms" tab explains that instead of
@@ -55,7 +64,8 @@ def load_profiles() -> list:
         return []
 
     try:
-        url = f"{SUPABASE_URL}/rest/v1/profiles?select=*"
+        # W44: explicit columns; email/auth_user_id/token are not readable with the public key
+        url = f"{SUPABASE_URL}/rest/v1/profiles?select={PUBLIC_PROFILE_COLUMNS}"
         headers = _rest_headers()
         response = httpx.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -404,22 +414,21 @@ def check_verification_status(profile_id: str) -> str:
         return "**Error:** Database not connected."
 
     try:
-        # Fetch profile
-        url = f"{SUPABASE_URL}/rest/v1/profiles?select=id,name,email,email_verified,notifications_enabled&id=eq.{profile_id.strip()}"
-        headers = _rest_headers()
-        response = httpx.get(url, headers=headers, timeout=10)
+        # W44: flags only via get_email_status (SECURITY DEFINER), never the address
+        url = f"{SUPABASE_URL}/rest/v1/rpc/get_email_status"
+        headers = _rest_headers(json_body=True)
+        response = httpx.post(url, headers=headers, json={"p_profile_id": profile_id.strip()}, timeout=10)
         response.raise_for_status()
-        profiles = response.json()
+        p = response.json() or {}
 
-        if not profiles:
+        if not p.get("found"):
             return f"**Error:** Profile '{profile_id}' not found."
 
-        p = profiles[0]
-        email = p.get("email")
+        has_email = bool(p.get("has_email"))
         verified = p.get("email_verified", False)
         notifications = p.get("notifications_enabled", True)
 
-        if not email:
+        if not has_email:
             return f"""## 📧 Email Status: **{p.get('name', profile_id)}**
 
 **Status:** No email address on profile
@@ -432,7 +441,7 @@ update_my_profile(profile_id="{profile_id}", email="your@email.com")
         elif verified:
             return f"""## 📧 Email Status: **{p.get('name', profile_id)}**
 
-**Email:** {email[:3]}***{email[email.index('@'):]}
+**Email:** on file (hidden)
 **Status:** ✅ Verified
 **Notifications:** {'✅ Enabled' if notifications else '❌ Disabled'}
 
@@ -441,7 +450,7 @@ You will receive email notifications about connection requests and responses.
         else:
             return f"""## 📧 Email Status: **{p.get('name', profile_id)}**
 
-**Email:** {email[:3]}***{email[email.index('@'):]}
+**Email:** on file (hidden)
 **Status:** ⏳ Pending verification
 
 **Next steps:**

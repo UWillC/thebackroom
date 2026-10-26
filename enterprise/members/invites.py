@@ -125,78 +125,35 @@ def register_tools(mcp):
         if not get_supabase():
             return {"error": "Database not connected."}
 
+        # W44 #20: joining goes through join_room_with_invite (SECURITY DEFINER, authenticated
+        # only). It checks the invitation (active, not expired, uses < max_uses), that the
+        # caller owns profile_id, refuses re-entry after offboarding/suspension, inserts
+        # status='pending' role='member' and counts the use. The old path read room_invites
+        # directly, which RLS allows only to the room owner, so it failed for real joiners.
         try:
+            from auth.magic_link import get_session
+            if not get_session():
+                return {"error": "Not authenticated. Log in first (auth_request_magic_link → auth_complete_link)."}
             client = get_supabase_with_auth()
+            params = {"p_invite_token": invite_token, "p_profile_id": profile_id}
+            if assistant_profile_id:
+                params["p_assistant_profile_id"] = assistant_profile_id
+            result = client.rpc("join_room_with_invite", params).execute().data or {}
 
-            # Find and validate invite
-            invite_response = client.table("room_invites").select(
-                "*, rooms(*)"
-            ).eq("token", invite_token).eq("is_active", True).execute()
+            if not result.get("success"):
+                return {"error": result.get("error") or "Failed to join room"}
 
-            if not invite_response.data:
-                return {"error": "Invalid or expired invitation token."}
-
-            invite = invite_response.data[0]
-            room = invite.get("rooms", {})
-
-            # Check if invite is still valid
-            if invite["uses"] >= invite["max_uses"]:
-                return {"error": "This invitation has reached its maximum uses."}
-
-            # Check if already a member
-            existing = client.table("room_members").select("status").eq(
-                "room_id", room["id"]
-            ).eq("profile_id", profile_id).execute()
-
-            if existing.data:
-                status = existing.data[0].get("status")
-                if status == "approved":
-                    return {"error": "You're already a member of this room."}
-                elif status == "pending":
-                    return {"error": "Your join request is pending approval."}
-
-            # Create membership request
-            member_data = {
-                "room_id": room["id"],
-                "profile_id": profile_id,
+            return {
+                "success": True,
+                "room": {
+                    "id": result.get("room_id"),
+                    "name": result.get("room_name"),
+                    "room_type": result.get("room_type")
+                },
                 "status": "pending",
-                "invited_by": invite["created_by"],
-                "invite_token": invite_token
+                "message": f"Join request sent to '{result.get('room_name')}'! Waiting for admin approval.",
+                "next_step": "The room admin will approve your request."
             }
-
-            # For Personal rooms, include assistant_profile_id
-            if room.get("room_type") == "personal" and assistant_profile_id:
-                member_data["assistant_profile_id"] = assistant_profile_id
-
-            response = client.table("room_members").insert(member_data).execute()
-
-            if response.data:
-                # Increment invite uses
-                client.table("room_invites").update({
-                    "uses": invite["uses"] + 1
-                }).eq("id", invite["id"]).execute()
-
-                # Log action
-                client.rpc("log_room_action", {
-                    "p_room_id": room["id"],
-                    "p_actor_id": profile_id,
-                    "p_action": "member_joined",
-                    "p_details": {"via_invite": invite_token[:8] + "..."}
-                }).execute()
-
-                return {
-                    "success": True,
-                    "room": {
-                        "id": room["id"],
-                        "name": room["name"],
-                        "room_type": room.get("room_type")
-                    },
-                    "status": "pending",
-                    "message": f"Join request sent to '{room['name']}'! Waiting for admin approval.",
-                    "next_step": "The room admin will approve your request."
-                }
-
-            return {"error": "Failed to join room"}
 
         except Exception as e:
             return {"error": f"Error joining room: {e}"}

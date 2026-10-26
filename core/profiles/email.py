@@ -3,7 +3,7 @@ The Backroom - Profiles Module
 """
 
 from utils import (
-    get_supabase, load_profiles, format_profile_summary,
+    get_supabase, load_profiles, format_profile_summary, get_service_client,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, sanitize_text, sanitize_list,
@@ -83,8 +83,12 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            # Call the SQL function
-            response = get_supabase().rpc("resend_verification_email", {
+            # W44: EXECUTE is service_role only (REVOKE from PUBLIC/anon); the function keeps
+            # the 5-min and per-recipient limits and never returns the address.
+            service = get_service_client()
+            if not service:
+                return {"error": "Resend is unavailable (server service client not configured)."}
+            response = service.rpc("resend_verification_email", {
                 "p_profile_id": profile_id
             }).execute()
 
@@ -127,22 +131,19 @@ def register_tools(mcp):
             return {"error": "Database not connected."}
 
         try:
-            response = get_supabase().table("profiles").select(
-                "id, name, email, email_verified, notifications_enabled, email_verification_sent_at"
-            ).eq("id", profile_id).execute()
+            # W44: profiles.email is not readable with the public key; get_email_status
+            # (SECURITY DEFINER) returns flags only, never the address.
+            profile = get_supabase().rpc("get_email_status", {"p_profile_id": profile_id}).execute().data or {}
 
-            if not response.data:
+            if not profile.get("found"):
                 return {"error": f"Profile '{profile_id}' not found."}
 
-            profile = response.data[0]
-
-            # Build status display
-            email = profile.get("email")
+            has_email = bool(profile.get("has_email"))
             verified = profile.get("email_verified", False)
             notifications = profile.get("notifications_enabled", True)
-            sent_at = profile.get("email_verification_sent_at")
+            sent_at = profile.get("verification_sent")
 
-            if not email:
+            if not has_email:
                 status = "NO_EMAIL"
                 message = "No email address on profile. Add email with update_my_profile."
             elif verified:
@@ -158,7 +159,7 @@ def register_tools(mcp):
             return {
                 "profile_id": profile_id,
                 "name": profile.get("name"),
-                "email": email[:3] + "***" + email[email.index("@"):] if email else None,  # Mask email
+                "has_email": has_email,
                 "status": status,
                 "email_verified": verified,
                 "notifications_enabled": notifications,

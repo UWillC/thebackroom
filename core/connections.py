@@ -4,6 +4,7 @@ The Backroom - Connections Module
 
 from utils import (
     get_supabase, load_profiles, format_profile_summary,
+    owned_profile_email,
     log_search, log_profile_view, log_search_appearances,
     check_rate_limit, get_rate_limit_status,
     validate_input, validate_profile_id, sanitize_text, sanitize_list,
@@ -309,13 +310,13 @@ def register_tools(mcp):
                 return {"error": f"Request already {req['status']}."}
 
             # Get your profile for contact info
-            my_profile = get_supabase().table("profiles").select("*").eq("id", req["to_user"]).execute()
+            # W44: the e-mail is read server-side and shared only when the logged-in caller
+            # owns the receiving profile (session e-mail = profile e-mail).
             contact_shared = {}
-
-            if accept and my_profile.data:
-                profile = my_profile.data[0]
-                if share_email and profile.get("email"):
-                    contact_shared["email"] = profile["email"]
+            if accept and share_email:
+                my_email = owned_profile_email(req["to_user"])
+                if my_email:
+                    contact_shared["email"] = my_email
 
             # Prompt-injection check on response message
             if response_message:

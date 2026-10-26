@@ -1,5 +1,5 @@
 -- ============================================================
--- NOT APPLIED. Apply only after @ciso review PASS + user "pchaj".
+-- APPLIED 2026-10-26 ~19:47 EDT (apply_migration w44_19_20_hardening_2026_10_26) after @ciso GO z warunkami (W1/W2/W3/W6/W8 done); verify file == ALL OK == true, 0 failed of 72 (md5 of 11 functions match). Code 5815237 live on Render + HF.
 -- Apply together with the code on branch fix/w44-19-20 (deploy the code in the same window:
 -- the old code inserts profiles as anon and reads `select *`, which this file blocks).
 --

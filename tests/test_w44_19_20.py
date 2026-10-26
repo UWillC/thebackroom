@@ -335,3 +335,51 @@ def test_rollback_restores_live_bodies():
     body = snap[snap.index("CREATE OR REPLACE FUNCTION public.send_verification_email"):]
     assert body in rb
     assert "RE-OPENS" in rb[:400]
+
+
+# ---------- @ciso review 2026-10-26 (W1, W2, W3, W6, W8) ----------
+
+VERIFY = ROOT / "sql/security_fixes/2026-10-26_w44_verify_after_apply.sql"
+
+
+def _code_lines(src):
+    return [l.strip() for l in src.splitlines() if l.strip() and not l.strip().startswith("--")]
+
+
+def test_w2_migration_and_rollback_are_explicit_transactions():
+    for path in (MIGRATION, ROLLBACK):
+        lines = _code_lines(_sql(path))
+        assert lines[0] == "BEGIN;" and lines[-1] == "COMMIT;", path.name
+
+
+def test_w1_join_checks_assistant_owner():
+    fn = _sql(MIGRATION).split("CREATE FUNCTION public.join_room_with_invite", 1)[1].split("END $$;", 1)[0]
+    assert "a.human_profile_id = p_profile_id" in fn
+    assert fn.index("human_profile_id = p_profile_id") < fn.index("INSERT INTO room_members")
+
+
+def test_w6_delete_policy_blocks_own_offboarded_row():
+    src = _sql(MIGRATION)
+    pol = src.split("CREATE POLICY room_members_delete", 1)[1].split(";", 1)[0]
+    assert "status NOT IN ('offboarded', 'suspended')" in pol and "owns_profile(r.owner_id)" in pol
+    rb = _sql(ROLLBACK)
+    assert "CREATE POLICY room_members_delete" in rb and "OR owns_profile(profile_id));" in rb
+
+
+def test_w8_rollback_restores_exact_live_acl():
+    rb = _sql(ROLLBACK)
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO anon, authenticated;" in rb
+    assert "REFERENCES, TRIGGER ON public.profiles" not in rb
+
+
+def test_w3_verify_file_reads_pg_catalog_only():
+    src = _sql(VERIFY)
+    code = "\n".join(_code_lines(src)).lower()
+    assert "information_schema" not in code
+    assert "proacl" in code and "relacl" in code and "aclexplode" in code
+    for name in ("tb_html", "tb_subject", "tb_safe_url", "tb_email_send_allowed", "tb_can_self_join",
+                 "register_profile", "get_email_status", "join_room_with_invite", "email_send_log"):
+        assert name in code, name
+    no_literals = re.sub(r"'[^']*'", "''", code)
+    assert not re.search(r"\b(insert|update|delete|grant|revoke|create|drop|alter|truncate)\b", no_literals), \
+        "verify file must be read-only"

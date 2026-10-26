@@ -251,6 +251,44 @@ SELECT t_assert((join_room_with_invite('tok1', 'unver4'))->>'success' = 'false',
 RESET ROLE;
 RESET test.uid;
 
+-- ===== @ciso attacks after review (W1, W6) =====
+INSERT INTO rooms (id, name, slug, room_type, owner_id) VALUES
+  ('44444444-4444-4444-4444-444444444444', 'Personal P', 'p', 'personal', 'owner1');
+INSERT INTO room_invites (room_id, created_by, token, max_uses) VALUES
+  ('44444444-4444-4444-4444-444444444444', 'owner1', 'tokp', 5);
+INSERT INTO assistant_profiles (id, name, slug, human_profile_id) VALUES
+  ('55555555-5555-5555-5555-555555555555', 'Owner bot', 'owner-bot', 'owner1'),
+  ('66666666-6666-6666-6666-666666666666', 'User2 bot', 'user2-bot', 'user2');
+SET test.uid = '00000000-0000-0000-0000-00000000000b';
+SET ROLE authenticated;
+SELECT t_assert((join_room_with_invite('tokp', 'user2', '55555555-5555-5555-5555-555555555555'))->>'error'
+  = 'Assistant profile does not belong to you', 'W1: attach someone else''s assistant -> refused');
+SELECT t_assert((join_room_with_invite('tokp', 'user2', '66666666-6666-6666-6666-666666666666'))->>'status' = 'pending',
+  'W1: own assistant -> pending');
+RESET ROLE;
+RESET test.uid;
+SELECT t_assert((SELECT count(*) FROM room_members WHERE room_id = '44444444-4444-4444-4444-444444444444'
+  AND assistant_profile_id = '55555555-5555-5555-5555-555555555555') = 0, 'W1: no row with the foreign assistant');
+-- W6: offboarded member deletes own row, then re-joins (the @ciso attack)
+SELECT t_assert(t_run('authenticated', :C, $$DELETE FROM room_members$$) = 'OK', 'W6: DELETE without WHERE runs');
+SELECT t_assert((SELECT count(*) FROM room_members WHERE profile_id = 'user3' AND status = 'offboarded') = 1,
+  'W6: own offboarded row survives DELETE');
+SET test.uid = '00000000-0000-0000-0000-00000000000c';
+SET ROLE authenticated;
+SELECT t_assert((join_room_with_invite('tok2', 'user3'))->>'success' = 'false', 'W6: re-join after attempted delete -> refused');
+RESET ROLE;
+RESET test.uid;
+-- an approved member may still leave (a pending one cannot see its own row: SELECT policy, unchanged)
+UPDATE room_members SET status = 'approved' WHERE profile_id = 'user2' AND room_id = '44444444-4444-4444-4444-444444444444';
+SELECT t_assert(t_run('authenticated', :B, $$DELETE FROM room_members WHERE profile_id = 'user2'
+  AND room_id = '44444444-4444-4444-4444-444444444444'$$) = 'OK', 'W6: approved member leave runs');
+SELECT t_assert((SELECT count(*) FROM room_members WHERE profile_id = 'user2'
+  AND room_id = '44444444-4444-4444-4444-444444444444') = 0, 'W6: approved member can still leave (own row deleted)');
+SELECT t_assert(t_run('authenticated', :A, $$DELETE FROM room_members WHERE profile_id = 'user3'$$) = 'OK', 'W6: owner delete runs');
+SELECT t_assert((SELECT count(*) FROM room_members WHERE profile_id = 'user3') = 0, 'W6: owner can still delete an offboarded row');
+INSERT INTO room_members (room_id, profile_id, role, status) VALUES
+  ('11111111-1111-1111-1111-111111111111', 'user3', 'member', 'offboarded');
+
 -- ===== ACL / definition checks =====
 SELECT t_assert((SELECT bool_and(prosecdef) FROM pg_proc WHERE proname IN
   ('register_profile','get_email_status','join_room_with_invite','resend_verification_email','send_verification_email',

@@ -41,20 +41,31 @@ Rules:
 - Not kept here on purpose: one-off data scripts (test inserts, email fixes for a single profile,
   "clear all data") and state dumps. They contained personal data or are destructive by design.
 
-## W44 (2026-10-26): ROADMAP #19 rest + #20, NOT APPLIED
+## W44 (2026-10-26): ROADMAP #19 rest + #20, NOT APPLIED (@ciso: GO z warunkami, W1-W8 done)
 
 Files (`security_fixes/`): `2026-10-26_w44_19_20_hardening.sql` (migration),
-`..._rollback.sql`, `2026-10-26_w44_live_snapshot.sql` (live bodies read 2026-10-26, md5-verified).
-Local proof: `tests/run_w44_local.sh` (postgres:17 in docker; 102 assertions + re-apply abort +
-rollback md5). Apply only after @ciso review + user "pchaj":
+`..._rollback.sql`, `2026-10-26_w44_live_snapshot.sql` (live bodies read 2026-10-26, md5-verified),
+`2026-10-26_w44_verify_after_apply.sql` (read-only checks over pg_catalog).
+Local proof: `tests/run_w44_local.sh` (postgres:17 in docker): 112 SQL assertions incl. the
+@ciso attacks, 4 atomicity modes, verify file all ok, re-apply abort, rollback to live md5 + ACL,
+second apply inside an outer transaction.
 
-1. Read-only pre-check: the migration's guard aborts by itself on drift (md5 of 10 functions).
-2. `apply_migration` name `w44_19_20_hardening_2026_10_26`, body = the migration file (one unit).
-3. Right after: merge branch `fix/w44-19-20` to `main` and push (CI -> Render MCP) and push the
+**Apply path (chosen, @ciso W2):** `supabase-write apply_migration`, name
+`w44_19_20_hardening_2026_10_26`, body = the migration file as is. The file carries its own
+`BEGIN; ... COMMIT;`, so atomicity does not depend on how the tool sends it: the Management API
+docs (`POST /v1/projects/{ref}/database/migrations`) do not say whether the call runs in one
+transaction, so we do not rely on it. Tested locally: with an error forced just before COMMIT
+nothing stays changed when the file is sent statement by statement (stop or continue on error),
+as one simple query, or inside an outer transaction (there `BEGIN` only warns). The SQL editor
+of project ifofgblilanwjhypzvdb is the fallback, same file unchanged. Apply only after
+@ciso review + user "pchaj":
+
+1. Pre-check: the guard aborts by itself on drift (md5 of 10 functions, W44 objects present).
+2. Apply as above. Error = nothing changed; stop and report, do not retry blindly.
+3. Run `security_fixes/2026-10-26_w44_verify_after_apply.sql` with the read-only MCP
+   (`execute_sql`). Row `== ALL OK ==` must be `true`; any `false` = stop (do not deploy code),
+   rollback file if needed.
+4. Right after: merge branch `fix/w44-19-20` to `main` and push (CI -> Render MCP) and push the
    HF Space. Until then the old code fails on `select *` / anon INSERT (minutes, 1 user).
-4. Post-apply checks (read-only): md5 of the 10 functions = values printed by run_w44_local.sh
-   ("md5 after"); `has_column_privilege('anon','public.profiles','email','SELECT')` = false;
-   `has_function_privilege('anon','public.resend_verification_email(text)','EXECUTE')` = false;
-   `has_function_privilege('anon','public.register_profile(text,text,text,text[],text[],text[],text,text,text[],text,text,text,text,text,text[])','EXECUTE')` = false
-   (Supabase default ACL grants new functions to anon: the file revokes it explicitly);
-   no INSERT policy on profiles; then one real registration through MCP with a `+alias` address.
+5. Smoke test: Backroom MCP `auth_check`, `get_profile("przemek_(snow)")`, then one real
+   registration through MCP with a `+alias` address (mail arrives, profile deleted afterwards).

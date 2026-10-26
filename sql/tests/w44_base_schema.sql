@@ -129,3 +129,15 @@ CREATE TABLE public.room_audit_log (id uuid PRIMARY KEY DEFAULT gen_random_uuid(
   'invite_revoked','settings_changed'])), target_id text, details jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz DEFAULT now());
 GRANT ALL ON public.room_audit_log TO service_role;
+
+-- added after @ciso review 2026-10-26: live room_members_delete + assistant_profiles (SELECT true)
+CREATE POLICY room_members_delete ON public.room_members FOR DELETE USING (
+  (EXISTS (SELECT 1 FROM rooms r WHERE r.id = room_members.room_id AND owns_profile(r.owner_id)))
+  OR owns_profile(profile_id));
+CREATE TABLE public.assistant_profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name text NOT NULL,
+  slug text NOT NULL, human_profile_id text, is_active boolean DEFAULT true);
+ALTER TABLE public.assistant_profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY assistant_profiles_select ON public.assistant_profiles FOR SELECT USING (true);
+GRANT SELECT ON public.assistant_profiles TO anon, authenticated;
+GRANT ALL ON public.assistant_profiles TO service_role;
+-- live ACL of profiles 2026-10-26 is arwd (no REFERENCES/TRIGGER); the GRANT above already matches

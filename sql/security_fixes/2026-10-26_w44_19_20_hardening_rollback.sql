@@ -9,13 +9,19 @@
 -- After: md5 of the 10 mail functions = the "live md5" list in the snapshot header.
 -- ============================================================
 
+BEGIN;
+
 DO $g$ BEGIN
   IF to_regclass('public.email_send_log') IS NULL THEN
     RAISE EXCEPTION 'forward migration not applied (no email_send_log), nothing to roll back';
   END IF;
 END $g$;
 
--- #20
+-- #20 (+ @ciso W6 delete policy back to the live text of 2026-10-26)
+DROP POLICY room_members_delete ON public.room_members;
+CREATE POLICY room_members_delete ON public.room_members FOR DELETE USING (
+  (EXISTS (SELECT 1 FROM rooms r WHERE r.id = room_members.room_id AND owns_profile(r.owner_id)))
+  OR owns_profile(profile_id));
 DROP POLICY room_members_insert ON public.room_members;
 CREATE POLICY room_members_insert ON public.room_members FOR INSERT WITH CHECK (
   (EXISTS (SELECT 1 FROM rooms r WHERE r.id = room_members.room_id AND owns_profile(r.owner_id)))
@@ -25,8 +31,10 @@ DROP FUNCTION public.join_room_with_invite(text, text, uuid);
 -- profiles
 DROP FUNCTION public.register_profile(text,text,text,text[],text[],text[],text,text,text[],text,text,text,text,text,text[]);
 DROP FUNCTION public.get_email_status(text);
-REVOKE ALL ON public.profiles FROM anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON public.profiles TO anon, authenticated;
+-- @ciso W8: exactly the live ACL of 2026-10-26 (pg_class.relacl): anon=arwd, authenticated=arwd,
+-- service_role=arwd, no PUBLIC entry, no column ACLs.
+REVOKE ALL ON public.profiles FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO anon, authenticated;
 CREATE POLICY "Anyone can create profile" ON public.profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY profiles_insert ON public.profiles FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 DROP INDEX public.profiles_email_lower_key;
@@ -1006,3 +1014,5 @@ DROP FUNCTION public.tb_safe_url(text);
 DROP FUNCTION public.tb_subject(text);
 DROP FUNCTION public.tb_html(text);
 DROP TABLE public.email_send_log;
+
+COMMIT;

@@ -61,12 +61,21 @@
 --   other notifications: 20 per recipient / 24 h, 200 global / 1 h (over: mail skipped)
 --   new profiles: 30 / 1 h globally
 --
--- APPLY ORDER: see sql/README.md "W44" or the @cto report 2026-10-26. This file is one unit:
---   supabase-write apply_migration name `w44_19_20_hardening_2026_10_26` with this file's body
---   (or SQL editor of project ifofgblilanwjhypzvdb inside BEGIN/COMMIT).
+-- APPLY ORDER: see sql/README.md "W44" or the @cto report 2026-10-26. This file is one unit.
+--   TRANSACTION (@ciso W2): the file has its own BEGIN ... COMMIT, so it is atomic however it
+--   is sent (one simple query, statement by statement, or inside an outer transaction of the
+--   tool, where BEGIN only warns). Any error before COMMIT = nothing changed. Tested locally in
+--   all three modes, plus a forced failure just before COMMIT (sql/tests/run_w44_local.sh).
+--   Apply path: supabase-write apply_migration name `w44_19_20_hardening_2026_10_26` with this
+--   file's body (or the SQL editor of project ifofgblilanwjhypzvdb, same file as is).
+-- VERIFY: 2026-10-26_w44_verify_after_apply.sql (read-only, pg_catalog ACLs) right after.
 -- ROLLBACK: 2026-10-26_w44_19_20_hardening_rollback.sql (re-opens every hole above).
 -- VERIFIED LOCALLY: sql/tests/run_w44_local.sh (postgres:17, live bodies, stubs for pg_net/auth).
+-- @ciso review 2026-10-26 (GO z warunkami): W1 assistant ownership in join_room_with_invite,
+--   W6 room_members_delete (no delete of an own offboarded/suspended row), W2 BEGIN/COMMIT.
 -- ============================================================
+
+BEGIN;
 
 -- ---------- 1. guard: no drift since the read on 2026-10-26 ----------
 DO $guard$
@@ -1284,6 +1293,12 @@ BEGIN
   IF p_assistant_profile_id IS NOT NULL AND rm_room.room_type IS DISTINCT FROM 'personal' THEN
     p_assistant_profile_id := NULL;
   END IF;
+  -- @ciso W1: assistant uuids are public (assistant_profiles SELECT true); only your own one
+  IF p_assistant_profile_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM assistant_profiles a
+        WHERE a.id = p_assistant_profile_id AND a.human_profile_id = p_profile_id) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Assistant profile does not belong to you');
+  END IF;
 
   -- invite_token stays NULL: room_members.invite_token is UNIQUE, a multi-use invite would fail
   INSERT INTO room_members (room_id, profile_id, status, role, invited_by, assistant_profile_id)
@@ -1300,3 +1315,12 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.join_room_with_invite(text, text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.join_room_with_invite(text, text, uuid) TO authenticated, service_role;
+
+-- @ciso W6: a member could delete the own offboarded/suspended row and re-join through an
+-- invitation. Owner keeps full delete; a member may delete (leave) only an active/pending row.
+DROP POLICY room_members_delete ON public.room_members;
+CREATE POLICY room_members_delete ON public.room_members FOR DELETE USING (
+  (EXISTS (SELECT 1 FROM rooms r WHERE r.id = room_members.room_id AND owns_profile(r.owner_id)))
+  OR (owns_profile(profile_id) AND status NOT IN ('offboarded', 'suspended')));
+
+COMMIT;

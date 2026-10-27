@@ -264,9 +264,14 @@ def _sql(path):
     return path.read_text(encoding="utf-8")
 
 
-def test_migration_header_says_not_applied():
+def test_migration_header_records_apply_gate():
+    # Before apply: "NOT APPLIED" + @ciso + pchaj. After apply: dated "APPLIED" + @ciso.
     head = _sql(MIGRATION)[:400]
-    assert "NOT APPLIED" in head and "@ciso" in head and "pchaj" in head
+    first = head.splitlines()[1]
+    if "NOT APPLIED" in first:
+        assert "@ciso" in head and "pchaj" in head
+    else:
+        assert re.search(r"APPLIED \d{4}-\d{2}-\d{2}", first) and "@ciso" in first
 
 
 def test_migration_revokes_resend_from_public_and_anon():

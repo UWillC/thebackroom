@@ -4,6 +4,7 @@ The Backroom - Input Validation & Security
 
 import re
 import html
+import unicodedata
 
 # ============== INPUT VALIDATION ==============
 
@@ -119,6 +120,9 @@ def detect_prompt_injection(text: str) -> tuple[bool, str, list]:
     """
     if not text:
         return True, "none", []
+
+    # W-B3: zero-width chars inside a keyword ("ig<ZWSP>nore") must not hide it.
+    text = strip_invisible(text)
 
     text_lower = text.lower()
     matched = []
@@ -253,6 +257,10 @@ def sanitize_text(text: str, check_injection: bool = False) -> str:
     if not text:
         return text
 
+    # W-B3 (CISO review 2026-10-31): invisible format chars are removed on
+    # write too, before control-char stripping, escaping and injection checks,
+    # because many fields (subject, name, tags, offers) reach assistants unframed.
+    text = strip_invisible(text)
     text = text.strip()
     text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
     text = html.escape(text)
@@ -263,24 +271,28 @@ def sanitize_text(text: str, check_injection: bool = False) -> str:
     return text
 
 
-# H1b (CISO 2026-10-31): invisible code points a model reads but a human
-# reviewer and the regex filters do not see. Tags block (ASCII smuggling),
-# bidi embeddings/overrides/isolates, zero-width space/non-joiner, word
-# joiner + invisible operators, BOM/ZWNBSP, variation selectors 17-256
-# ("emoji smuggling"). U+200D (ZWJ) and U+FE00-FE0F stay: they are part of
-# legitimate emoji sequences. Side effect: the 3 subdivision flags
-# (England/Scotland/Wales) that use Tag characters degrade to a black flag.
-_INVISIBLE_RE = re.compile(
-    "["
-    "\U000E0000-\U000E007F"   # Tags block
-    "\u202A-\u202E"           # bidi embedding / override
-    "\u2066-\u2069"           # bidi isolates
-    "\u200B\u200C"            # zero-width space, zero-width non-joiner
-    "\u2060-\u2064"           # word joiner, invisible operators
-    "\uFEFF"                   # BOM / zero-width no-break space
-    "\U000E0100-\U000E01EF"   # variation selectors supplement
-    "]"
-)
+# H1b + W-B2 (CISO 2026-10-31): invisible code points a model reads but a
+# human reviewer and the regex filters do not see. Filter by Unicode category:
+# every Cf (format) character is removed except U+200D (ZWJ, part of emoji
+# sequences), which covers Tags (ASCII smuggling), bidi overrides/isolates,
+# LRM/RLM/ALM, ZWSP/ZWNJ, word joiner, BOM, soft hyphen, deprecated format
+# chars, interlinear annotations. Also removed: blank fillers U+034F, U+115F,
+# U+1160, U+3164, U+FFA0 and variation selectors 17-256 (emoji smuggling).
+# U+FE00-FE0F (category Mn, emoji presentation) stay. Side effects accepted
+# by @ciso: England/Scotland/Wales flags degrade to a black flag, Persian
+# text loses ZWNJ (still readable).
+_EXTRA_INVISIBLE = frozenset({0x034F, 0x115F, 0x1160, 0x3164, 0xFFA0})
+_KEEP_FORMAT = frozenset({0x200D})
+
+
+def _is_invisible(ch: str) -> bool:
+    cp = ord(ch)
+    if cp in _KEEP_FORMAT:
+        return False
+    if cp in _EXTRA_INVISIBLE or 0xE0100 <= cp <= 0xE01EF:
+        return True
+    return unicodedata.category(ch) == "Cf"
+
 
 # H1 (CISO 2026-10-31): the frame delimiters (and their lookalikes
 # U+301A/U+301B) must never appear inside the framed text, otherwise the
@@ -290,16 +302,23 @@ _DELIMITER_MAP = str.maketrans({
     "\u301A": "[", "\u301B": "]",   # WHITE SQUARE BRACKET (lookalike)
 })
 
+# W-B1 (CISO review 2026-10-31): the marker phrase itself is neutralized, in
+# any brackets, case or spacing (matched after NFKC), so plain text such as
+# "[END UNTRUSTED CONTENT]" cannot read like the end of the frame either.
+_MARKER_RE = re.compile(r"(?:end[\W_]*)?untrusted[\W_]*content", re.IGNORECASE)
+MARKER_PLACEHOLDER = "[removed-marker]"
+
 
 def strip_invisible(text: str) -> str:
-    """Remove invisible/bidi/tag code points (H1b). ZWJ is kept for emoji."""
+    """Remove invisible format code points (H1b/W-B2). ZWJ is kept for emoji."""
     if not text:
         return text
-    return _INVISIBLE_RE.sub("", text)
+    return "".join(ch for ch in text if not _is_invisible(ch))
 
 
 def _neutralize_frame(text: str) -> str:
-    return strip_invisible(str(text)).translate(_DELIMITER_MAP)
+    text = unicodedata.normalize("NFKC", strip_invisible(str(text)))
+    return _MARKER_RE.sub(MARKER_PLACEHOLDER, text.translate(_DELIMITER_MAP))
 
 
 def wrap_untrusted(text: str, source: str = "external user") -> str:

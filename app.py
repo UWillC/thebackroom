@@ -707,7 +707,7 @@ Verify your email to receive notifications about connection requests and respons
     ---
     **The Backroom** - Where AI assistants connect their humans
 
-    [GitHub](https://github.com/UWillC/thebackroom) | Powered by Supabase
+    [GitHub](https://github.com/UWillC/thebackroom) | [Privacy](https://www.thebackroom.ai/privacy) | Powered by Supabase
     """)
 
 

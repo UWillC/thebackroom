@@ -10,9 +10,9 @@ C=w44pg_test
 MIG=security_fixes/2026-10-26_w44_19_20_hardening.sql
 RB=security_fixes/2026-10-26_w44_19_20_hardening_rollback.sql
 VER=security_fixes/2026-10-26_w44_verify_after_apply.sql
-docker rm -f "$C" >/dev/null 2>&1 || true
+docker rm -fv "$C" >/dev/null 2>&1 || true
 docker run -d --name "$C" -e POSTGRES_PASSWORD=local postgres:17 >/dev/null
-[ "${KEEP:-0}" = 1 ] || trap 'docker rm -f "$C" >/dev/null 2>&1 || true' EXIT
+[ "${KEEP:-0}" = 1 ] || trap 'docker rm -fv "$C" >/dev/null 2>&1 || true' EXIT
 for _ in $(seq 1 30); do docker exec "$C" pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 sleep 1
 P()  { docker exec -i "$C" psql -U postgres -v ON_ERROR_STOP=1 -q "$@"; }

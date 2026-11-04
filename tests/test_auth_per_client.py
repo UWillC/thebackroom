@@ -9,7 +9,10 @@ without touching the network.
 import inspect
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from supabase import create_client
+from supabase.lib.client_options import SyncClientOptions
 
 from auth import magic_link as ml
 
@@ -172,7 +175,11 @@ def test_no_server_side_link_generation_left_in_the_module():
         line for line in source.splitlines() if not line.strip().startswith(("#", '"', "any "))
     )
     assert "generate_link(" not in code
-    assert ".admin." not in code
+    # One exception (W15, 2026-11-04): logout with the user's own JWT and the
+    # anon key, scope local. Any other admin call, or another scope, fails here.
+    allowed = 'client.auth.admin.sign_out(access_token, "local")'
+    assert code.count(allowed) == 1
+    assert ".admin." not in code.replace(allowed, "")
 
 
 def test_authenticated_client_does_not_touch_auth_state():
@@ -244,3 +251,167 @@ def test_real_client_construction_and_user_jwt_on_data_api(remote, monkeypatch):
     assert headers["authorization"] == "Bearer jwt"
     remote.headers = {}
     assert ml.get_authenticated_client() is None
+
+
+# ============== LOGOUT ENDS THE AUTH SESSION (@ciso W15, 2026-11-04) ==============
+# Real supabase client, fake network: pins the request that really goes out.
+# client.auth.sign_out() on our stateless client would send nothing at all.
+
+def _wire_client(monkeypatch, handler):
+    monkeypatch.setattr(ml, "_anon_client", lambda: create_client(
+        "https://example.supabase.co",
+        "test.anon.key",
+        options=SyncClientOptions(
+            httpx_client=httpx.Client(transport=httpx.MockTransport(handler)),
+            auto_refresh_token=False,
+            persist_session=False,
+        ),
+    ))
+
+
+def test_logout_ends_only_this_session_before_deleting_the_row(remote, monkeypatch):
+    remote.headers = {"authorization": "Bearer " + BEARER_A}
+    ml._save_session(_session())
+    calls = []
+
+    def handler(request):
+        # The row must still exist: if this call fails we keep nothing unsent.
+        calls.append((request, len(remote.db.rows)))
+        return httpx.Response(204)
+
+    _wire_client(monkeypatch, handler)
+    result = ml.auth_logout()
+
+    assert len(calls) == 1
+    request, rows_during_call = calls[0]
+    assert rows_during_call == 1
+    assert request.method == "POST"
+    assert request.url.path == "/auth/v1/logout"
+    assert request.url.params["scope"] == "local"
+    assert request.headers["authorization"] == "Bearer jwt"
+    assert request.headers["apikey"] == "test.anon.key"
+    assert result["success"] is True
+    assert result["server_session_ended"] is True
+    assert remote.db.rows == {}
+
+
+@pytest.mark.parametrize("failure", ["network", "http_500", "http_403"])
+def test_logout_failure_on_server_does_not_block_local_logout(remote, monkeypatch, capsys, failure):
+    remote.headers = {"authorization": "Bearer " + BEARER_A}
+    ml._save_session(_session())
+
+    def handler(request):
+        if failure == "network":
+            raise httpx.ConnectError("no route")
+        return httpx.Response(int(failure[-3:]), json={"code": 0, "msg": "nope"})
+
+    _wire_client(monkeypatch, handler)
+    result = ml.auth_logout()
+
+    assert result["success"] is True
+    assert result["server_session_ended"] is False
+    assert "did not confirm" in result["message"]
+    assert remote.db.rows == {}
+    assert ml.get_session() is None
+    assert "jwt" not in capsys.readouterr().out
+
+
+def test_logout_survives_client_construction_failure(remote, monkeypatch):
+    remote.headers = {"authorization": "Bearer " + BEARER_A}
+    ml._save_session(_session())
+
+    def boom():
+        raise RuntimeError("bad config")
+
+    monkeypatch.setattr(ml, "_anon_client", boom)
+    assert ml.auth_logout()["server_session_ended"] is False
+    assert remote.db.rows == {}
+
+
+def test_logout_leaves_other_clients_of_the_same_account_alone(remote, monkeypatch):
+    remote.headers = {"authorization": "Bearer " + BEARER_B}
+    other = dict(_session(), access_token="other-jwt")
+    ml._save_session(other)
+    remote.headers = {"authorization": "Bearer " + BEARER_A}
+    ml._save_session(_session())
+    tokens = []
+
+    def handler(request):
+        tokens.append(request.headers["authorization"])
+        return httpx.Response(204)
+
+    _wire_client(monkeypatch, handler)
+    ml.auth_logout()
+
+    assert tokens == ["Bearer jwt"]
+    remote.headers = {"authorization": "Bearer " + BEARER_B}
+    assert ml.get_session()["access_token"] == "other-jwt"
+
+
+def test_logout_refreshes_an_expired_token_first(remote, monkeypatch):
+    remote.headers = {"authorization": "Bearer " + BEARER_A}
+    ml._save_session(dict(_session(), access_token="old-jwt", expires_at=1))
+    monkeypatch.setattr(ml, "_try_refresh", lambda s: dict(s, access_token="new-jwt"))
+    tokens = []
+
+    def handler(request):
+        tokens.append(request.headers["authorization"])
+        return httpx.Response(204)
+
+    _wire_client(monkeypatch, handler)
+    assert ml.auth_logout()["server_session_ended"] is True
+    assert tokens == ["Bearer new-jwt"]
+
+
+def test_logout_without_a_session_sends_nothing(remote, monkeypatch):
+    def handler(request):
+        raise AssertionError("no session, no request")
+
+    _wire_client(monkeypatch, handler)
+    remote.headers = {}
+    result = ml.auth_logout()
+    assert result["success"] is True
+    assert result["server_session_ended"] is False
+    assert "did not confirm" not in result["message"]
+
+
+def test_logout_in_stdio_mode_removes_the_file_when_server_fails(monkeypatch, tmp_path):
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    monkeypatch.setattr(ml, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(ml, "SESSION_FILE", tmp_path / "session.json")
+    ml._save_session(_session())
+
+    def handler(request):
+        raise httpx.ConnectError("no route")
+
+    _wire_client(monkeypatch, handler)
+    assert ml.auth_logout()["server_session_ended"] is False
+    assert not (tmp_path / "session.json").exists()
+
+
+def test_refresh_does_not_bring_back_a_row_after_unconfirmed_logout(remote, monkeypatch):
+    """Logout wins the race for the lock, server did not confirm: the row stays gone."""
+    remote.headers = {"authorization": "Bearer " + BEARER_A}
+    ml._save_session(_session())
+    monkeypatch.setattr(ml, "_end_auth_session", lambda session: False)
+    real_lock_for = ml._lock_for
+
+    class LogoutFirst:
+        """Logout runs right before refresh gets the lock."""
+
+        def __enter__(self):
+            monkeypatch.setattr(ml, "_lock_for", real_lock_for)
+            assert ml.auth_logout()["server_session_ended"] is False
+            assert remote.db.rows == {}
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(ml, "_lock_for", lambda key: LogoutFirst())
+    monkeypatch.setattr(ml, "_try_refresh", lambda s: ml._save_session(s) and s)
+
+    result = ml.refresh_session()
+
+    assert result == {"success": False, "error": "No session to refresh"}
+    assert remote.db.rows == {}
+    assert ml.get_session() is None

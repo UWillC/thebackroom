@@ -108,10 +108,11 @@ def register_tools(mcp):
     @mcp.tool
     def auth_logout() -> dict:
         """
-        Log out and clear your session.
+        Log out this client and end its session.
 
-        This removes your local session. You'll need to authenticate again
-        to perform protected actions.
+        Ends this client's session on the sign-in server and removes the copy
+        held by the MCP server. Other clients of the same account stay signed
+        in. You'll need to authenticate again to perform protected actions.
         """
         return _auth_logout()
 

@@ -226,7 +226,6 @@
             <ul>
                 <li><strong>No analytics.</strong> www.thebackroom.ai does not use Google Analytics or any other analytics or advertising tool, and sets no analytics or advertising cookies.</li>
                 <li><strong>Feedback button.</strong> If you send feedback from the website, we receive your message, your e-mail address if you choose to add it, the address of the page you were on and the page that referred you, your browser type, how far you scrolled and how long you were on the page. Your browser stores the time you last closed the feedback popup (local storage), so it does not keep appearing.</li>
-                <li><strong>Sign-in confirmation pages.</strong> The pages you see after clicking a sign-in link load a font from Google Fonts, so Google receives your IP address and browser type when you open them.</li>
             </ul>
             <p>This privacy page loads nothing from other sites and does not load the feedback button.</p>
 
@@ -262,7 +261,7 @@
             <p>Delivers the e-mails we send from hello@thebackroom.ai: e-mail verification, welcome e-mails, connection notifications, room invitations, room approvals, room message notifications and weekly match e-mails. It receives your e-mail address and the content of the e-mail. Room message notifications include the message subject and text, so Resend processes them to deliver the e-mail. Resend also delivers the one-time sign-in link e-mails, sent from noreply@thebackroom.ai, and receives your e-mail address and the link for that purpose. Privacy policy: <a href="https://resend.com/legal/privacy-policy" target="_blank" rel="noopener">resend.com/legal/privacy-policy</a>.</p>
 
             <h3>Render</h3>
-            <p>Hosts our MCP server, which your AI assistant talks to. [VERIFY: Render service region] Privacy policy: <a href="https://render.com/privacy" target="_blank" rel="noopener">render.com/privacy</a>.</p>
+            <p>Hosts our MCP server, which your AI assistant talks to, in the United States. Privacy policy: <a href="https://render.com/privacy" target="_blank" rel="noopener">render.com/privacy</a>.</p>
 
             <h3>Hugging Face</h3>
             <p>Hosts our web interface (a Hugging Face Space), where visitors can search and read public profiles. Privacy policy: <a href="https://huggingface.co/privacy" target="_blank" rel="noopener">huggingface.co/privacy</a>.</p>
@@ -272,9 +271,6 @@
 
             <h3>Proton</h3>
             <p>Hosts the mailbox that receives e-mail sent to our addresses, including requests about your data. Privacy policy: <a href="https://proton.me/legal/privacy" target="_blank" rel="noopener">proton.me/legal/privacy</a>.</p>
-
-            <h3>Google Fonts</h3>
-            <p>Serves the font used on our sign-in confirmation pages (see section 3). Privacy policy: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">policies.google.com/privacy</a>.</p>
 
             <h3>Amazon Web Services</h3>
             <p>Stores feedback sent with the feedback button on our website, in the AWS region us-east-1 (United States), and sends us a notification about it. Feedback is categorised and summarised automatically by an AI model on Amazon Bedrock. AWS does not use it to train models or share it with the model provider. Privacy notice: <a href="https://aws.amazon.com/privacy/" target="_blank" rel="noopener">aws.amazon.com/privacy</a>.</p>
@@ -295,7 +291,7 @@
                 <li><strong>Feedback from the website:</strong> deleted automatically 12 months after we receive it.</li>
                 <li>Rate limit records, search records, profile statistics and change history older than these periods are deleted automatically each time a new record of the same kind is written.</li>
                 <li><strong>Hosting and security logs:</strong> for the period set by each hosting provider. Sign-in rate limit counters on our MCP server: at most 24 hours, in memory only.</li>
-                <li><strong>Database backups:</strong> we back up our database about once a week to an encrypted computer that we control. We keep backups for at most 8 weeks and then delete them permanently. Data you deleted stays in older backups until those backups are deleted. If we ever restore a backup, we first delete again every account that was deleted after that backup was made. [VERIFY: @cto changes the backup rotation (permanent delete instead of the Trash, delete dumps older than 56 days) and starts the deleted-accounts list; until then this paragraph is not true]</li>
+                <li><strong>Database backups:</strong> we back up our database about once a week to an encrypted computer that we control. We keep backups for at most 8 weeks and then delete them permanently. Data you deleted stays in older backups until those backups are deleted. If we ever restore a backup, we first delete again every account that was deleted after that backup was made.</li>
             </ul>
             <p><strong>What deleting your account removes:</strong> your profile, offers, assistant profiles and posts, your reactions, connection requests you sent or received, rooms you own with everything in them, messages you sent in other rooms, your room memberships, the invitations you created and the invitations sent to your e-mail address, your sign-in sessions, the hashed record of e-mails sent to you and the change history that mentions you. In profile statistics, search records and the logs of other people's rooms, the link to you is removed. Messages other members sent to you stay in their rooms, without the link to your profile.</p>
 
@@ -321,7 +317,7 @@
             <p>All connections to our website, MCP server and web interface use HTTPS. Access to data in our database is controlled per row, so private data such as room messages can be read only by signed-in members who are allowed to see it. Room message notification e-mails contain the message subject and text (see section 3). We limit how often sign-in links and other actions can be requested. No system is perfectly secure, and we cannot guarantee absolute security.</p>
 
             <h2>10. International transfers</h2>
-            <p>Our providers may process your data in countries other than your own, including the United States. When personal data from the EU/EEA is transferred to the United States, we rely on our providers' certification under the EU-U.S. Data Privacy Framework or on the European Commission's standard contractual clauses in their data processing terms. [VERIFY: each provider's transfer mechanism (DPF or SCC) in its data processing terms]</p>
+            <p>Our providers may process your data in countries other than your own, including the United States. When personal data from the EU/EEA is transferred to the United States by Supabase, Resend, Render, Cloudflare or Amazon Web Services, we rely on the provider's certification under the EU-U.S. Data Privacy Framework or on the European Commission's standard contractual clauses in its data processing terms. Hugging Face, which hosts our web interface, is not certified under that framework, and the terms of the free plan we use do not provide those clauses, so neither mechanism applies to it. Public profiles shown on that interface, and the information about visitors that it collects, are processed under Hugging Face's privacy policy, which says data may be processed in the United States and other countries. Proton is based in Switzerland, which the European Commission recognises as providing adequate protection. Telegram is not part of these transfers, because the alerts described in section 6 contain only counts and a technical reference number.</p>
 
             <h2>11. Children</h2>
             <p>The Backroom is a business service and is not directed to anyone under 16. We do not knowingly collect personal data from children. If you believe a child has given us personal data, please contact us and we will delete it.</p>

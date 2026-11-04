@@ -580,17 +580,61 @@ def auth_status() -> dict:
     }
 
 
+def _end_auth_session(session: dict) -> bool:
+    """
+    End this session in Supabase Auth, so its refresh token stops working.
+
+    Scope "local" on purpose: one account may be signed in from several MCP
+    clients, each with its own session, and logging out one must not log out
+    the others. The library default is "global".
+
+    Sends the user's own JWT with the anon key, no service role involved. The
+    plain client.auth.sign_out() on our stateless client has no stored session
+    and silently sends nothing, and set_session() may rotate the refresh token
+    behind our back. Never raises: a failure here must not block the local
+    logout.
+    """
+    try:
+        if _needs_refresh(session):
+            # /logout needs a live access token. If the refresh fails, the old
+            # token may still be inside the refresh buffer, so try it anyway.
+            session = _try_refresh(session) or session
+        access_token = session.get("access_token")
+        client = _anon_client()
+        if not access_token or not client:
+            return False
+        client.auth.admin.sign_out(access_token, "local")
+        return True
+    except Exception as e:
+        print(f"Auth sign-out failed: {type(e).__name__}")
+        return False
+
+
 def auth_logout() -> dict:
     """
-    Log out the calling client and clear its session.
+    Log out the calling client: end its session in Supabase Auth, then clear
+    our copy. The copy goes even if Supabase cannot be reached.
 
     Returns:
-        dict with status
+        dict with status; server_session_ended says whether Supabase confirmed
     """
-    _clear_session()
+    key, _kind = _client_key()
+    # Same lock as refresh: a parallel refresh must not save the session back.
+    with _lock_for(key or "local"):
+        session = _load_session()
+        ended = _end_auth_session(session) if session else False
+        _clear_session()
+    if ended or not session:
+        message = "Logged out successfully"
+    else:
+        message = (
+            "Logged out on this client, but the sign-in server did not confirm "
+            "the end of the session. It may stay active on the server."
+        )
     return {
         "success": True,
-        "message": "Logged out successfully"
+        "message": message,
+        "server_session_ended": ended,
     }
 
 
@@ -601,16 +645,15 @@ def refresh_session() -> dict:
     Returns:
         dict with new session info
     """
-    session = _load_session()
-    if not session:
-        return {
-            "success": False,
-            "error": "No session to refresh"
-        }
-
     key, _kind = _client_key()
+    # Read only under the lock: a copy from before a logout must not save the session back.
     with _lock_for(key or "local"):
-        session = _load_session() or session
+        session = _load_session()
+        if not session:
+            return {
+                "success": False,
+                "error": "No session to refresh"
+            }
         refreshed = _try_refresh(session)
     if refreshed:
         return {

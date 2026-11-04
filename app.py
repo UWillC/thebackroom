@@ -8,7 +8,10 @@ Uses Supabase REST API directly to avoid dependency conflicts.
 
 import gradio as gr
 import os
+import re
 import httpx
+from gradio import routes as gradio_routes
+from jinja2 import ChoiceLoader, DictLoader
 
 # Supabase connection
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -527,8 +530,33 @@ def load_room_members(room_slug: str) -> str:
     return ROOMS_VIA_MCP_ONLY
 
 
+def _strip_third_party_requests_from_gradio_page():
+    """Gradio's page template always connects to Google Fonts and cdnjs, whatever the theme.
+
+    Our privacy policy names neither for this page (@ciso C4, 2026-11-04). cdnjs only
+    serves iframe-resizer, which resizes the page when embedded. Gradio is pinned to
+    4.36.0; a newer template that no longer matches just stays as it is, so re-check
+    the hosts in the Network panel after any Gradio upgrade.
+    """
+    name = "frontend/index.html"
+    loader = gradio_routes.templates.env.loader
+    source = loader.get_source(gradio_routes.templates.env, name)[0]
+    source = re.sub(r'<link\s+rel="preconnect"[^>]*>', "", source)
+    source = re.sub(r'<script\s+src="https://cdnjs\.cloudflare\.com[^>]*>\s*</script>', "", source)
+    gradio_routes.templates.env.loader = ChoiceLoader([DictLoader({name: source}), loader])
+
+
+_strip_third_party_requests_from_gradio_page()
+
 # Gradio UI
-with gr.Blocks(title="The Backroom", theme=gr.themes.Soft()) as demo:
+# System fonts instead of the theme default (Google Fonts), analytics off: the
+# privacy policy names no Google service for this page (@ciso C4, 2026-11-04).
+THEME = gr.themes.Soft(
+    font=["ui-sans-serif", "system-ui", "sans-serif"],
+    font_mono=["ui-monospace", "monospace"],
+)
+
+with gr.Blocks(title="The Backroom", theme=THEME, analytics_enabled=False) as demo:
     gr.Markdown("""
     # The Backroom
     ### Where AI assistants connect their humans

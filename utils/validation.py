@@ -278,18 +278,30 @@ def sanitize_text(text: str, check_injection: bool = False) -> str:
 # LRM/RLM/ALM, ZWSP/ZWNJ, word joiner, BOM, soft hyphen, deprecated format
 # chars, interlinear annotations. Also removed: blank fillers U+034F, U+115F,
 # U+1160, U+3164, U+FFA0 and variation selectors 17-256 (emoji smuggling).
-# U+FE00-FE0F (category Mn, emoji presentation) stay. Side effects accepted
-# by @ciso: England/Scotland/Wales flags degrade to a black flag, Persian
-# text loses ZWNJ (still readable).
-_EXTRA_INVISIBLE = frozenset({0x034F, 0x115F, 0x1160, 0x3164, 0xFFA0})
+# Side effects accepted by @ciso: England/Scotland/Wales flags degrade to a
+# black flag, Persian text loses ZWNJ (still readable).
+#
+# W1 (CISO re-review 2026-11-04): the rest of Default_Ignorable and all control
+# characters, because they split a phrase just as well as Cf does:
+# - C0/C1 except \n, \t, \r; unassigned U+2065, U+FFF0-FFF8, U+E0000-E0FFF;
+# - ZWJ, VS1-16, Khmer U+17B4/5 and Mongolian FVS only BETWEEN two word
+#   characters. Emoji sequences (ZWJ, VS16, keycap) and ZWJ after a virama
+#   (Malayalam, Sinhala) never sit between two word characters, so they stay.
+_EXTRA_INVISIBLE = frozenset({0x034F, 0x115F, 0x1160, 0x2065, 0x3164, 0xFFA0})
 _KEEP_FORMAT = frozenset({0x200D})
+_KEEP_CONTROL = frozenset({0x09, 0x0A, 0x0D})
+_INNER_INVISIBLE_RE = re.compile(
+    r"(?<=\w)[\u200D\uFE00-\uFE0F\u17B4\u17B5\u180B-\u180D\u180F]+(?=\w)"
+)
 
 
 def _is_invisible(ch: str) -> bool:
     cp = ord(ch)
-    if cp in _KEEP_FORMAT:
+    if cp in _KEEP_FORMAT or cp in _KEEP_CONTROL:
         return False
-    if cp in _EXTRA_INVISIBLE or 0xE0100 <= cp <= 0xE01EF:
+    if cp <= 0x1F or 0x7F <= cp <= 0x9F:
+        return True
+    if cp in _EXTRA_INVISIBLE or 0xFFF0 <= cp <= 0xFFF8 or 0xE0000 <= cp <= 0xE0FFF:
         return True
     return unicodedata.category(ch) == "Cf"
 
@@ -310,14 +322,17 @@ MARKER_PLACEHOLDER = "[removed-marker]"
 
 
 def strip_invisible(text: str) -> str:
-    """Remove invisible format code points (H1b/W-B2). ZWJ is kept for emoji."""
+    """Remove invisible code points (H1b/W-B2/W1). ZWJ and VS16 stay in emoji."""
     if not text:
         return text
-    return "".join(ch for ch in text if not _is_invisible(ch))
+    text = "".join(ch for ch in text if not _is_invisible(ch))
+    return _INNER_INVISIBLE_RE.sub("", text)
 
 
 def _neutralize_frame(text: str) -> str:
-    text = unicodedata.normalize("NFKC", strip_invisible(str(text)))
+    # Second pass after NFKC: a symbol that NFKC turns into a letter (circled U)
+    # is not a word character before it, so a ZWJ next to it survives the first.
+    text = strip_invisible(unicodedata.normalize("NFKC", strip_invisible(str(text))))
     return _MARKER_RE.sub(MARKER_PLACEHOLDER, text.translate(_DELIMITER_MAP))
 
 

@@ -1,0 +1,30 @@
+# Applies to both Dockerfile (COPY . .) and Dockerfile.mcp (named paths only).
+
+# Secrets and local config
+**/.env
+**/.env.*
+**/.mcp.json
+**/*.pem
+**/*.key
+
+# Local environments
+.venv/
+venv/
+
+# Git history
+.git
+
+# Caches and build output
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Editor and OS files
+.idea/
+.vscode/
+**/*.swp
+**/.DS_Store
+**/Thumbs.db

@@ -13,7 +13,7 @@ RB = ROOT / "sql/security_fixes/2026-10-30_privacy_retention_rollback.sql"
 VERIFY = ROOT / "sql/security_fixes/2026-10-30_privacy_retention_verify_after_apply.sql"
 SMOKE = ROOT / "sql/security_fixes/2026-10-30_privacy_retention_smoke.sql"
 README = ROOT / "sql/README.md"
-POLICY = ROOT / "policy-hold/privacy.html"
+POLICY = ROOT / "docs/privacy.html"
 LANDING = ROOT / "docs/index.html"
 
 

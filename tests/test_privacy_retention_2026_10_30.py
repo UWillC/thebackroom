@@ -56,7 +56,11 @@ def test_policy_form_and_opsec():
     assert "Przemysław Snowacki" in policy
     assert "Google Analytics" not in policy.replace("does not use Google Analytics", "")
     assert "<script" not in policy
-    assert "Room message notifications include the message subject and text" in policy
+    # True by construction: no trigger mails room messages (drop_room_message_trigger_2026_11_05).
+    # Guard on production: security_fixes/2026-11-05_room_mail_send_paths_verify.sql. Change them together.
+    assert "We do not send e-mail when a message is sent to you in a room." in policy
+    assert "Room messages are not sent by e-mail, so Resend does not receive their subject or text." in policy
+    assert "room message notification" not in policy.lower()
 
 
 def test_w1_audit_match_is_per_field_not_text_search_on_profile_id():

@@ -17,6 +17,16 @@ DO $g$ BEGIN
   END IF;
 END $g$;
 
+-- @ciso N3 (2026-11-05): later migrations changed mail functions. This file would put the pre-W44 bodies
+-- of all 10 mail functions back (message text, no escaping). It runs only over the W44 bodies.
+DO $g$ BEGIN
+  IF md5(pg_get_functiondef('public.notify_room_message()'::regprocedure)) IS DISTINCT FROM 'ca322bde9b801dec4274ccc1738f43e2'
+     OR md5(pg_get_functiondef('public.notify_connection_request()'::regprocedure)) IS DISTINCT FROM '36739fc73168e1a322c3b2654f793ac9'
+     OR md5(pg_get_functiondef('public.notify_connection_accepted()'::regprocedure)) IS DISTINCT FROM '5f9f831afdd47c99a9695c1c780f5ab0' THEN
+    RAISE EXCEPTION 'later migrations changed the mail functions, this rollback would restore old bodies';
+  END IF;
+END $g$;
+
 -- #20 (+ @ciso W6 delete policy back to the live text of 2026-10-26)
 DROP POLICY room_members_delete ON public.room_members;
 CREATE POLICY room_members_delete ON public.room_members FOR DELETE USING (

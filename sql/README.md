@@ -41,7 +41,11 @@ Rules:
 - Not kept here on purpose: one-off data scripts (test inserts, email fixes for a single profile,
   "clear all data") and state dumps. They contained personal data or are destructive by design.
 
-## W44 (2026-10-26): ROADMAP #19 rest + #20, NOT APPLIED (@ciso: GO z warunkami, W1-W8 done)
+## W44 (2026-10-26): ROADMAP #19 rest + #20, APPLIED 2026-10-26 (`w44_19_20_hardening_2026_10_26`, version 20261026234249; @ciso: GO z warunkami, W1-W8 done)
+
+**Do not run `2026-10-26_w44_19_20_hardening_rollback.sql` without a new migration.** It overwrites all 10 mail
+functions with their pre-W44 bodies (message text, no escaping), including the room and connection mails
+changed on 2026-11-05. Its guard refuses when those functions are no longer the W44 bodies.
 
 Files (`security_fixes/`): `2026-10-26_w44_19_20_hardening.sql` (migration),
 `..._rollback.sql`, `2026-10-26_w44_live_snapshot.sql` (live bodies read 2026-10-26, md5-verified),
@@ -120,3 +124,39 @@ Apply steps, in this order:
    missing file means stop. No e-mail address on the list. At the weekly retro, remove entries older
    than 56 days by hand: by then no backup from before the deletion exists, so the entry has no use.
 5. Reply to the requester within 30 days (GDPR) / 45 days (CCPA).
+
+## Room mail without message content (2026-11-05), APPLIED 2026-11-05 (`room_mail_no_content_2026_11_05`, version 20261105124355; verify `== ALL OK ==`, md5 `43370bf6...`)
+
+Files (`security_fixes/`): `2026-11-05_room_mail_no_content.sql`, `..._rollback.sql`,
+`..._verify_after_apply.sql`, `2026-11-05_room_mail_send_paths_verify.sql` (all checks read-only).
+Test: `tests/run_room_mail_local.sh` (docker, never Supabase), with the real `send_room_message` and
+`respond_to_message` (copy in `tests/live_room_send_functions.sql`).
+
+This mail never went out: `send_room_message` adds recipients after the message, so the trigger found none.
+`2026-11-05_drop_room_message_trigger.sql` (+ `_rollback.sql`), APPLIED 2026-11-05 as `drop_room_message_trigger_2026_11_05`
+(version 20261106010821 UTC, @ciso GO, guard 0 of 4 failed), removed trigger `on_room_message_sent`;
+the function stays, unattached. The policy says room messages are not sent by e-mail, true by construction
+while `2026-11-05_room_mail_send_paths_verify.sql` is all true (no trigger on the message tables, function
+attached nowhere, no other mailing function reading room messages). Any false = policy and code change together.
+After these migrations row `md5: notify_room_message` of the W44 verify file and row "trigger present" of
+`2026-11-05_room_mail_no_content_verify_after_apply.sql` are false by design.
+
+Rollback (@ciso W3):
+1. While the mail does not go out, the policy stays as it is: the rollback does not change whether it is true,
+   and a sentence about content in the mail would be untrue. Once the send order is fixed: policy first,
+   @ciso approval, SQL last.
+2. The rollback is harmless only while the mail does not go out. Once the send order is fixed it puts
+   message subject and text back through Resend.
+3. Never run `2026-10-26_w44_19_20_hardening_rollback.sql` without a new migration: it would overwrite all 10
+   mail functions with pre-W44 bodies. Its guard refuses over bodies changed after W44.
+
+## Connection mails without user text (2026-11-05), APPLIED 2026-11-05 (`connection_mail_no_text_2026_11_05`, version 20261106005715 UTC; verify `== ALL OK ==` 0 of 12 failed)
+
+Files (`security_fixes/`): `2026-11-05_connection_mail_no_text.sql`, `..._rollback.sql`,
+`..._verify_after_apply.sql`. Test: `tests/run_connection_mail_local.sh`. `NEW.message` and
+`NEW.response_message` leave the mails; LinkedIn and preferred contact stay (user decision).
+Apply through `supabase-write apply_migration`, name `connection_mail_no_text_2026_11_05`, then the verify file.
+These mails are live, so the rollback really puts text back through Resend: @ciso + user first.
+Same ban as above: never `2026-10-26_w44_19_20_hardening_rollback.sql` without a new migration (all 10 mail functions).
+After it rows `md5: notify_connection_request` and `md5: notify_connection_accepted` of the W44 verify file
+are false by design. No policy change depends on it: the policy does not describe the text in these mails.

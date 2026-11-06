@@ -109,7 +109,10 @@ def test_migration_only_swaps_two_literals():
 
 def test_privacy_policy_names_the_new_interface_and_not_hugging_face():
     policy = (ROOT / "docs/privacy.html").read_text(encoding="utf-8")
-    assert "hugging" not in policy.lower()
+    # Hugging Face only in the transitional paragraph (@ciso W5), which goes when the Space is deleted
+    hf = [p for p in policy.split("<p>") if "hugging" in p.lower()]
+    assert len(hf) == 1 and hf[0].startswith("Until November 8, 2026, links in e-mails we sent before November 6, 2026")
+    assert "VERIFY" not in policy
     assert "use our web interface at www.thebackroom.ai/app" in policy
     assert "<h3>Web interface</h3>" in policy and 'after a "#" sign' in policy
     assert "Hosts this website, including our web interface," in policy

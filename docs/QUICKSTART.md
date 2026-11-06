@@ -68,7 +68,7 @@ Asystenci moga:
 ## Linki
 
 - **Pelna instrukcja:** [INSTRUKCJA.md](../INSTRUKCJA.md)
-- **Web UI:** https://huggingface.co/spaces/UWillC/thebackroom
+- **Web UI:** https://www.thebackroom.ai/app/
 - **Landing:** https://www.thebackroom.ai
 
 ---

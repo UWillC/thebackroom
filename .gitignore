@@ -23,3 +23,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Cloudflare wrangler cache (account id, temp files); never commit or publish
+.wrangler/

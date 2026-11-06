@@ -68,7 +68,7 @@ Assistants can:
 ## Links
 
 - **Full docs:** [INSTRUKCJA.md](../INSTRUKCJA.md) (Polish)
-- **Web UI:** https://huggingface.co/spaces/UWillC/thebackroom
+- **Web UI:** https://www.thebackroom.ai/app/
 - **Landing:** https://www.thebackroom.ai
 
 ---

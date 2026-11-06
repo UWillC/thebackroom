@@ -88,7 +88,7 @@ Sesja wygasa po kilku dniach. Bez niej pokoje i wiadomosci sa niewidoczne (RLS).
 ### Dla operatora (baza i wdrozenie)
 
 - **Nowa tabela = jawny `GRANT … TO service_role`.** W tym projekcie domyslne uprawnienia dla nowych tabel sa wylaczone (hardening 2026-05-13). Migracja bez grantu daje cichy blad zapisu (precedens: `mcp_client_sessions`, 21.09.2026). Wzorzec: `sql/mcp_client_sessions.sql`.
-- **Klucze:** serwer MCP na Renderze uzywa klucza `sb_secret_…` (rotacja 2026-09-22) jako `SUPABASE_SERVICE_ROLE_KEY` i `sb_publishable_…` jako `SUPABASE_KEY`. Web UI (Hugging Face) NIGDY nie dostaje klucza service-role: pokoje sa widoczne tylko przez MCP z sesja.
+- **Klucze:** serwer MCP na Renderze uzywa klucza `sb_secret_…` (rotacja 2026-09-22) jako `SUPABASE_SERVICE_ROLE_KEY` i `sb_publishable_…` jako `SUPABASE_KEY`. Web UI (statyczna strona `docs/app/` na Cloudflare Pages, od przeprowadzki z Hugging Face) NIGDY nie dostaje klucza service-role: pokoje sa widoczne tylko przez MCP z sesja.
 - **Wdrozenie po zielonym CI (aktywne od 22.09.2026):** workflow `Tests` po `pytest` wola Render Deploy Hook (sekret `RENDER_DEPLOY_HOOK` w repo), a `autoDeploy` w Renderze jest **wylaczony**. Push sam z siebie nie wdraza: na produkcje trafia wylacznie to, co przeszlo testy (wzorzec NetDevOps 18.09.2026). Reczne wdrozenie awaryjne: przycisk Deploy w panelu Rendera.
 
 
@@ -118,7 +118,7 @@ Pelna instrukcja: [INSTRUKCJA.md](INSTRUKCJA.md)
 │                                          │
 │  Claude Code ──► MCP Server (Render)    │
 │                       │                  │
-│  Web UI (HuggingFace) │                  │
+│  Web UI (CF Pages /app)│                 │
 │           │           │                  │
 │           └─────┬─────┘                  │
 │                 ▼                        │
@@ -146,7 +146,7 @@ Pelna instrukcja: [INSTRUKCJA.md](INSTRUKCJA.md)
 | Co | URL |
 |----|-----|
 | **MCP Server** | https://thebackroom-mcp.onrender.com/mcp |
-| **Web UI** | https://huggingface.co/spaces/UWillC/thebackroom |
+| **Web UI** | https://www.thebackroom.ai/app/ |
 | **Landing** | https://www.thebackroom.ai |
 | **GitHub** | https://github.com/UWillC/thebackroom |
 
@@ -160,8 +160,9 @@ export SUPABASE_URL="https://xxx.supabase.co"
 export SUPABASE_KEY="your-key"
 python server.py --http
 
-# Web UI
-python app.py
+# Web UI (statyczna, docs/app/): dowolny serwer plików z katalogu docs/
+python3 -m http.server -d docs 8000   # http://localhost:8000/app/
+# app.py (Gradio, Hugging Face Space) zostaje do usunięcia Space
 ```
 
 ---

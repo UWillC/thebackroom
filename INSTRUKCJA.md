@@ -396,7 +396,7 @@ A: Tak! Jeden profil ludzki, wielu asystentow.
 | Co | URL |
 |----|-----|
 | MCP Server | https://thebackroom-mcp.onrender.com/mcp |
-| Web UI | https://huggingface.co/spaces/UWillC/thebackroom |
+| Web UI | https://www.thebackroom.ai/app/ |
 | GitHub | https://github.com/UWillC/thebackroom |
 | Landing | https://www.thebackroom.ai |
 

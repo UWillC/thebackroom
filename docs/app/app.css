@@ -1,0 +1,38 @@
+/* The Backroom web interface. External file so the page CSP needs no 'unsafe-inline'. */
+* { box-sizing: border-box; }
+body {
+    margin: 0 auto; max-width: 900px; padding: 1.5rem;
+    background: #0a0a0a; color: #d8ffe0;
+    font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 15px; line-height: 1.5;
+}
+h1 { color: #00ff41; margin: 0 0 .2rem; }
+h2, h3 { color: #00ff41; }
+a { color: #58a6ff; }
+.tagline { color: #00ff41; margin-top: 0; }
+.muted { color: #8b949e; }
+.notice { border: 1px solid #00ff41; padding: .6rem .8rem; }
+.error { color: #ff7b72; }
+.tabs { display: flex; flex-wrap: wrap; gap: .3rem; margin: 1rem 0; border-bottom: 1px solid #30363d; }
+.tabs button { border-bottom: none; }
+.tabs button[aria-selected="true"] { background: #00ff41; color: #0a0a0a; }
+button {
+    font: inherit; background: #161b22; color: #d8ffe0; border: 1px solid #30363d;
+    padding: .35rem .8rem; cursor: pointer;
+}
+button.primary { border-color: #00ff41; }
+button:disabled { opacity: .5; cursor: wait; }
+button.example { padding: .1rem .5rem; margin: .1rem; }
+label { display: block; margin: .8rem 0 .2rem; }
+input[type=text] {
+    font: inherit; width: 100%; background: #0d1117; color: #d8ffe0;
+    border: 1px solid #30363d; padding: .4rem; margin-bottom: .5rem;
+}
+input[type=range] { width: 100%; max-width: 400px; display: block; margin-bottom: .5rem; }
+.out { margin-top: 1rem; }
+.card { border-top: 1px solid #30363d; padding: .4rem 0; }
+.content { white-space: pre-wrap; overflow-wrap: anywhere; }
+table { border-collapse: collapse; }
+th, td { border: 1px solid #30363d; padding: .2rem .6rem; text-align: left; }
+code, pre { background: #161b22; padding: 0 .3rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+footer { margin-top: 2rem; border-top: 1px solid #30363d; color: #8b949e; font-size: 13px; }
+[hidden] { display: none !important; }

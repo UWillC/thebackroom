@@ -32,3 +32,15 @@
 
 /privacy.html
   Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+# Web interface (moved from the Hugging Face Space, 2026-11-05). Static page, data from Supabase in the
+# visitor's browser with the publishable key. connect-src = Supabase only; no inline script or style.
+/app
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src https://ifofgblilanwjhypzvdb.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+
+/app/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src https://ifofgblilanwjhypzvdb.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff

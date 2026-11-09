@@ -4,7 +4,7 @@ Regression tests for the 2026-09-22 hardening (@ciso #36b B4/B1 → @cto).
 - login errors distinguish "no client identity" from "session store failed"
 - get_profile hides the contact e-mail from anonymous callers
 - check_room_inbox fails closed with a reason instead of "0 unread"
-- the web UI (app.py) holds no service-role path
+- the web UI (docs/app) holds no service-role path
 - send_weekly_matches_email needs a logged-in owner
 """
 import inspect
@@ -80,9 +80,9 @@ def test_inbox_fails_closed_with_reason(monkeypatch):
 
 
 def test_web_ui_has_no_service_role_path():
-    src = open("app.py", encoding="utf-8").read()
-    assert "SERVICE_ROLE" not in src
-    assert "_service_headers" not in src
+    src = open("docs/app/app.js", encoding="utf-8").read()
+    assert "SERVICE_ROLE" not in src.upper()
+    assert "sb_secret_" not in src
 
 
 def test_weekly_mail_tool_requires_login(monkeypatch):

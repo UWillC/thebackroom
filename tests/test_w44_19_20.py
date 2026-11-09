@@ -150,8 +150,8 @@ def test_no_public_key_read_of_profile_email():
         for m in re.finditer(r'get_supabase(?:_with_auth)?\(\)\.table\("profiles"\)\.select\(\s*"([^"]*)"', src):
             cols = {c.strip() for c in m.group(1).split(",")}
             assert not cols & {"email", "auth_user_id", "email_verification_token", "*"}, (p, m.group(1))
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert "select=id,name,email," not in app and "rpc/get_email_status" in app
+    app = (ROOT / "docs/app/app.js").read_text(encoding="utf-8")
+    assert "select=id,name,email," not in app and "rpc('get_email_status'" in app
 
 
 def test_profile_updates_request_only_id_back():

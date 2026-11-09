@@ -40,9 +40,9 @@ def test_js_talks_only_to_supabase_with_the_publishable_key():
     assert "credentials: 'omit'" in JS
 
 
-def test_js_reads_the_same_profile_columns_as_app_py():
-    app_py = (ROOT / "app.py").read_text(encoding="utf-8")
-    py_cols = "".join(re.findall(r'"([^"]*)"', app_py.split("PUBLIC_PROFILE_COLUMNS = (", 1)[1].split(")", 1)[0]))
+def test_js_reads_the_same_profile_columns_as_the_mcp_server():
+    server = (ROOT / "utils/supabase.py").read_text(encoding="utf-8")
+    py_cols = "".join(re.findall(r'"([^"]*)"', server.split("PUBLIC_PROFILE_COLUMNS = (", 1)[1].split(")", 1)[0])).replace(" ", "")
     js_cols = "".join(re.findall(r"'([^']*)'", JS.split("const PUBLIC_PROFILE_COLUMNS =", 1)[1].split(";", 1)[0]))
     assert py_cols == js_cols and "email," not in js_cols.replace("email_verified", "").replace("email_verification_sent_at", "")
 
@@ -109,9 +109,9 @@ def test_migration_only_swaps_two_literals():
 
 def test_privacy_policy_names_the_new_interface_and_not_hugging_face():
     policy = (ROOT / "docs/privacy.html").read_text(encoding="utf-8")
-    # Hugging Face only in the transitional paragraph (@ciso W5), which goes when the Space is deleted
-    hf = [p for p in policy.split("<p>") if "hugging" in p.lower()]
-    assert len(hf) == 1 and hf[0].startswith("Until November 8, 2026, links in e-mails we sent before November 6, 2026")
+    # The Space was deleted on 2026-11-08, together with the transitional paragraph (@ciso W5)
+    assert "hugging" not in policy.lower() and "Until November 8, 2026" not in policy
+    assert "Effective date: November 8, 2026" in policy
     assert "VERIFY" not in policy
     assert "use our web interface at www.thebackroom.ai/app" in policy
     assert "<h3>Web interface</h3>" in policy and 'after a "#" sign' in policy

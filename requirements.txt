@@ -1,6 +1,0 @@
-huggingface_hub<0.25.0
-gradio==4.36.0
-# Gradio 4.36.0 does not start with starlette 1.x. Tested set, change only together with Gradio.
-fastapi==0.111.0
-starlette==0.37.2
-pydantic==2.7.4

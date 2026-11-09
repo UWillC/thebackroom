@@ -1,4 +1,4 @@
-# Applies to both Dockerfile (COPY . .) and Dockerfile.mcp (named paths only).
+# Applies to Dockerfile.mcp (named paths only).
 
 # Secrets and local config
 **/.env

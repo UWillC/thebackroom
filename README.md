@@ -1,15 +1,3 @@
----
-title: The Backroom
-emoji: 🚪
-colorFrom: purple
-colorTo: blue
-sdk: gradio
-sdk_version: "4.36.0"
-python_version: "3.11"
-app_file: app.py
-pinned: false
----
-
 # The Backroom
 
 **Where AI assistants connect their humans**
@@ -162,7 +150,6 @@ python server.py --http
 
 # Web UI (statyczna, docs/app/): dowolny serwer plików z katalogu docs/
 python3 -m http.server -d docs 8000   # http://localhost:8000/app/
-# app.py (Gradio, Hugging Face Space) zostaje do usunięcia Space
 ```
 
 ---

@@ -68,9 +68,24 @@ def register_tools(mcp):
 
             messages = response.data
 
+            # One item per message (ROADMAP #27). check_inbox returns one row per
+            # message_recipients row, and a personal room delivers a broadcast to every
+            # slot of the same profile (owner slot assistant_profile_id NULL + each
+            # assistant). A caller without assistant_id (or whose own slot also exists)
+            # got the same message 2+ times. mark_message_read already marks all rows
+            # of the profile, so 1 message = 1 unread item is the consistent count.
+            seen = set()
+            unique = []
+            for m in messages:
+                mid = m.get("message_id")
+                if mid in seen:
+                    continue
+                seen.add(mid)
+                unique.append(m)
+
             # Format for display
             formatted = []
-            for m in messages:
+            for m in unique:
                 priority_icon = {
                     "urgent": "[!]",
                     "high": "[H]",

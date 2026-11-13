@@ -160,3 +160,34 @@ These mails are live, so the rollback really puts text back through Resend: @cis
 Same ban as above: never `2026-10-26_w44_19_20_hardening_rollback.sql` without a new migration (all 10 mail functions).
 After it rows `md5: notify_connection_request` and `md5: notify_connection_accepted` of the W44 verify file
 are false by design. No policy change depends on it: the policy does not describe the text in these mails.
+
+## Read-only backup role `backup_ro` (2026-11-12), APPLIED 2026-11-12 (fallback variant B, first dump DB-OK)
+
+Replaces the `postgres` URI used by the weekly `pg_dump` (CEO repo `scripts/backup-ai-first.sh`, step 7) with a role
+that can only read `public` and `auth`. Files (`security_fixes/`): `2026-11-12_backup_ro_precheck.sql` (read-only,
+decides the variant), `2026-11-12_backup_ro_role.sql` (variant A: explicit grants, default), `..._role_fallback_pg_read_all_data.sql`
+(only if the precheck says variant A is impossible and @ciso agrees), `..._verify_after_apply.sql` (read-only,
+`== ALL OK ==`; fallback: only `[A]` rows false), `..._rollback.sql` (both variants).
+Test: `tests/run_backup_ro_local.sh` (docker, never Supabase, non-superuser `postgres` like on Supabase): a real
+`pg_dump` as `backup_ro` with the script's flags, restore, and everything the role must not do.
+Why SELECT on the 8 token tables and BYPASSRLS stay, the password step (`\password`, never in a file) and the
+acceptance test: CEO repo `raporty/zespol/2026-11-12_cto-backup-ro_raport.md`.
+After a Supabase auth upgrade adds a table in `auth`, the dump stops at LOCK (DB-ALARM): run the verify file, then the
+two `GRANT ... IN SCHEMA auth TO backup_ro` lines of the migration.
+
+## W2: PUBLIC loses EXECUTE on 3 writing SECURITY DEFINER functions (2026-11-12), APPLIED 2026-11-12
+
+@ciso condition W2 (CEO repo `raporty/zespol/2026-11-12_ciso-backup-ro_review.md`, section "Precheck produkcji 12.11"):
+must be DONE before the `backup_ro` password step. `REVOKE ALL ... FROM PUBLIC` + `GRANT EXECUTE ... TO anon,
+authenticated, service_role` for `public.verify_email_token(text,text)`, `public.wc2026_reset(text)` and
+`public.wc2026_save(text,int,int,int,int,int,text,text)`. Without it any role that logs in directly (e.g. `backup_ro`)
+can set `request.jwt.claims` itself and run these functions with their owner's rights. Callers (checked 2026-11-12):
+`verify_email_token` = anon (`docs/app/app.js`, MCP `verify_email` via the anon client); `wc2026_*` = none (Edge
+Function `wc2026` writes over `SUPABASE_DB_URL`). Files (`security_fixes/`): `2026-11-12_w2_revoke_public_secdef.sql`
+(apply_migration name `revoke_public_secdef_w2_2026_11_12`, guard + post-check in one transaction),
+`..._verify_after_apply.sql` (read-only, `== ALL OK ==`; also re-runs @ciso query W2b: PUBLIC may execute only
+`get_my_profile_id`, `is_room_member`, `owns_profile`, `wc2026_get_matches`; run once BEFORE apply and keep the
+`INFO: ACL` row), `..._rollback.sql` (EXECUTE back to PUBLIC; re-opens W2, only with `backup_ro` without password).
+Independent of `backup_ro_role_fallback_2026_11_12` (either order). Test: `tests/run_w2_revoke_local.sh` (docker,
+never Supabase): guards, atomicity, both orders, the attack as `backup_ro` before/after, callers still working,
+verify sabotage, rollback = pre-state. Report: CEO repo `raporty/zespol/2026-11-12_cto-w2-revoke_raport.md`.

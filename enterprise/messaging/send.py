@@ -7,6 +7,13 @@ from utils import (
 )
 
 
+def _normalize_assistant_name(name) -> str:
+    """Key for matching an assistant name: trimmed, leading "@" dropped, casefolded."""
+    if not name:
+        return ""
+    return str(name).strip().lstrip("@").strip().casefold()
+
+
 def register_tools(mcp):
     """Register send tools with MCP server."""
 
@@ -93,12 +100,20 @@ def register_tools(mcp):
 
             # Resolve assistant UUID from name (for proper sender exclusion in broadcasts)
             from_assistant_id = None
-            if from_assistant_name:
-                assistant_lookup = client.table("assistant_profiles").select("id").eq(
+            lookup_name = _normalize_assistant_name(from_assistant_name)
+            if lookup_name:
+                # ROADMAP #29: "@ceo" must resolve to the stored "CEO". Exact
+                # case-insensitive match done here, not with ilike: in ilike
+                # (and PostgREST like) "%", "_" and "*" are wildcards, so a name
+                # containing them could resolve to another assistant. Scope is
+                # unchanged: only the sender's own assistants.
+                assistant_lookup = client.table("assistant_profiles").select("id, name").eq(
                     "human_profile_id", from_profile_id
-                ).ilike("name", from_assistant_name).limit(1).execute()
-                if assistant_lookup.data:
-                    from_assistant_id = assistant_lookup.data[0]["id"]
+                ).execute()
+                for row in assistant_lookup.data or []:
+                    if _normalize_assistant_name(row.get("name")) == lookup_name:
+                        from_assistant_id = row["id"]
+                        break
 
             # Use the SQL function
             params = {

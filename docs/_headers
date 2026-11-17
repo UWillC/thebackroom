@@ -1,5 +1,17 @@
+# Baseline for every path, including the 404 page (Cloudflare Pages serves 404.html for any missing path and
+# applies the rules matching the requested path). Strict: no scripts, no outside connections. MUST stay the first rule:
+# Pages applies matching rules in file order, so every block below that sets its own CSP first detaches this one
+# ("! Content-Security-Policy"); without the detach the browser would enforce both policies (their intersection).
+/*
+  Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+# Landing page (2026-11-17): no inline script (the ld+json block is data, not executed), /widget.js from our
+# origin, which posts feedback to the notify-hub webhook. style-src keeps 'unsafe-inline': page <style> block,
+# one style="" attribute and the <style> element the widget injects. /index.html answers 308 -> /.
 /
   Link: </llms.txt>; rel="describedby"; type="text/plain", </.well-known/api-catalog>; rel="api-catalog"
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src https://3w7nw22j1d.execute-api.us-east-1.amazonaws.com/webhook/feedback; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /.well-known/api-catalog
   Content-Type: application/linkset+json
@@ -11,36 +23,45 @@
 # Auth callback (ROADMAP #21, S2-L5): no inline script, only /auth-callback.js from our origin.
 # style-src keeps 'unsafe-inline' (page <style> block + style="" attributes in the JS templates).
 /auth/callback
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /auth-callback
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /auth-callback.html
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # Auth success page: no scripts at all, font and styles from our origin only.
 /auth-success
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /auth-success.html
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # Privacy policy: it promises the page loads nothing from other sites (@ciso C8).
 /privacy
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 /privacy.html
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # Web interface (moved from the Hugging Face Space, 2026-11-05). Static page, data from Supabase in the
 # visitor's browser with the publishable key. connect-src = Supabase only; no inline script or style.
 /app
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src https://ifofgblilanwjhypzvdb.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
 
 /app/*
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src https://ifofgblilanwjhypzvdb.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff

@@ -21,7 +21,8 @@ function parseHeaders() {
   const rules = []; let cur = null;
   for (const raw of fs.readFileSync(path.join(DOCS, '_headers'), 'utf8').split('\n')) {
     if (!raw.trim() || raw.trim().startsWith('#')) continue;
-    if (!/^\s/.test(raw)) { cur = { pattern: raw.trim(), headers: [] }; rules.push(cur); continue; }
+    if (!/^\s/.test(raw)) { cur = { pattern: raw.trim(), headers: [], unset: [] }; rules.push(cur); continue; }
+    if (raw.trim().startsWith('! ')) { cur.unset.push(raw.trim().slice(2).trim()); continue; }
     const i = raw.indexOf(':'); cur.headers.push([raw.slice(0, i).trim(), raw.slice(i + 1).trim()]);
   }
   return rules;
@@ -36,7 +37,11 @@ http.createServer((req, res) => {
   let p = decodeURIComponent(url.pathname);
   if (p === '/app') { res.writeHead(308, { Location: '/app/' + url.search }); return res.end(); }
   const headers = {};
-  for (const r of parseHeaders()) if (matches(r.pattern, p)) for (const [k, v] of r.headers) headers[k] = v;
+  // Cloudflare Pages order: rules in file order; "! Name" detaches a header set by an earlier rule
+  for (const r of parseHeaders()) if (matches(r.pattern, p)) {
+    for (const k of r.unset) delete headers[k];
+    for (const [k, v] of r.headers) headers[k] = k in headers ? headers[k] + ', ' + v : v;
+  }
   if (headers['Content-Security-Policy']) {
     if (NO_CSP) delete headers['Content-Security-Policy'];
     else if (MOCK) headers['Content-Security-Policy'] = headers['Content-Security-Policy'].replace(PROD_SUPABASE, MOCK);
@@ -44,7 +49,10 @@ http.createServer((req, res) => {
   let file = path.join(DOCS, p);
   if (!file.startsWith(DOCS)) { res.writeHead(403); return res.end(); }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
-  if (!fs.existsSync(file)) { res.writeHead(404, headers); return res.end('not found'); }
+  if (!fs.existsSync(file)) {
+    headers['Content-Type'] = TYPES['.html']; headers['Cache-Control'] = 'no-store';
+    res.writeHead(404, headers); return res.end(fs.readFileSync(path.join(DOCS, '404.html')));
+  }
   let body = fs.readFileSync(file);
   if (MOCK && p === '/app/app.js') {
     const src = body.toString('utf8');

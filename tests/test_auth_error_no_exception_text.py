@@ -1,7 +1,7 @@
 """
 Auth errors do not echo exception text (@ciso Render review 17.11, LOW).
 
-Pins: request_magic_link returns and logs only the exception class name,
+Pins: request_magic_link returns a fixed message and logs only the class name,
 and _try_refresh logs only the class name, never the message.
 """
 from types import SimpleNamespace
@@ -23,7 +23,8 @@ def test_request_magic_link_error_has_no_exception_text(monkeypatch, capsys):
     res = ml.request_magic_link("user@example.com")
     out = capsys.readouterr().out
     assert res["success"] is False
-    assert "RuntimeError" in res["error"]
+    assert res["error"] == "Failed to send magic link. Try again later."
+    assert "RuntimeError" not in res["error"]
     assert SECRET not in res["error"] and "SECRET" not in res["error"]
     assert "SECRET" not in out and "RuntimeError" in out
 

@@ -397,13 +397,12 @@ def request_magic_link(email: str) -> dict:
             "next_step": _login_instructions(),
         }
     except Exception as e:
-        # Exception text can carry provider details (@ciso 17.11): log and
-        # return only the class name.
+        # Exception text can carry provider details (@ciso 17.11, W1 19.11):
+        # class name only in the log, a fixed message to the client.
         print(f"Magic link send failed: {type(e).__name__}")
         return {
             "success": False,
-            "error": f"Failed to send magic link ({type(e).__name__}). "
-                     "Try again later."
+            "error": "Failed to send magic link. Try again later."
         }
 
 

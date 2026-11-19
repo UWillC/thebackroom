@@ -278,7 +278,7 @@ def _try_refresh(session: dict) -> Optional[dict]:
             _save_session(session_data)
             return session_data
     except Exception as e:
-        print(f"Session auto-refresh failed: {e}")
+        print(f"Session auto-refresh failed: {type(e).__name__}")
     return None
 
 
@@ -397,9 +397,13 @@ def request_magic_link(email: str) -> dict:
             "next_step": _login_instructions(),
         }
     except Exception as e:
+        # Exception text can carry provider details (@ciso 17.11): log and
+        # return only the class name.
+        print(f"Magic link send failed: {type(e).__name__}")
         return {
             "success": False,
-            "error": f"Failed to send magic link: {e}"
+            "error": f"Failed to send magic link ({type(e).__name__}). "
+                     "Try again later."
         }
 
 

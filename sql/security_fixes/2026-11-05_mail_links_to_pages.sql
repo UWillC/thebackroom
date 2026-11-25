@@ -1,6 +1,7 @@
 -- ============================================================
--- NOT APPLIED. Needs @ciso review + user "pchaj". Apply only AFTER /app is live on Cloudflare Pages
--- (otherwise the new links point at a 404).
+-- APPLIED 2026-11-06 as mail_links_to_pages_2026_11_05 (night of 05/06.11, after /app went live on Cloudflare
+-- Pages; verify 45/45 ALL OK, 0 functions with "huggingface"). Header updated 2026-11-25 (was "NOT APPLIED").
+-- Original condition: @ciso review + user "pchaj", apply only AFTER /app is live on Cloudflare Pages.
 -- Web interface moves from the Hugging Face Space to https://www.thebackroom.ai/app/ (user decision
 -- 2026-11-05, variant a of DRAFTS/2026-11-05_cto-hf-przeprowadzka_rozpoznanie.md).
 -- What changes, in 9 mail functions, and nothing else:

@@ -351,17 +351,16 @@ def register_tools(mcp):
     @mcp.tool
     def send_weekly_matches_email(profile_id: str = "") -> dict:
         """
-        Send weekly matches email to a user or all eligible users.
+        Send the matches e-mail to your own profile (logged-in owner only).
 
-        This is normally run automatically every Monday at 9 AM UTC,
-        but can be triggered manually for testing.
+        There is no scheduled weekly job and no "send to everyone" path
+        (removed 2026-11-25): the e-mail goes out only when the owner asks.
 
         Args:
-            profile_id: Specific profile to send to, or empty for ALL eligible users
+            profile_id: Your own profile ID (required)
 
         Example:
-            send_weekly_matches_email("snow") → sends to snow only
-            send_weekly_matches_email() → sends to ALL eligible users
+            send_weekly_matches_email("snow") → sends to snow only, if snow is you
         """
         if not get_supabase():
             return {"error": "Database not connected."}
@@ -379,7 +378,7 @@ def register_tools(mcp):
         if not session:
             return {"error": "Not authenticated. Log in first (auth_request_magic_link → auth_complete_link)."}
         if not profile_id:
-            return {"error": "profile_id is required (sending to everyone is done by the weekly job, not by a tool)."}
+            return {"error": "profile_id is required (there is no send-to-everyone path)."}
         # profiles.email is not readable with the public key (W44): read it server-side
         owner_email = get_profile_email(profile_id)
         if owner_email.lower() != (session.get("email") or "").lower():
@@ -389,46 +388,30 @@ def register_tools(mcp):
             return {"error": "Server e-mail path unavailable (service client not configured)."}
 
         try:
-            if profile_id:
-                # Send to specific user
-                response = client.rpc("send_weekly_matches_email", {
-                    "p_profile_id": profile_id
-                }).execute()
+            response = client.rpc("send_weekly_matches_email", {
+                "p_profile_id": profile_id
+            }).execute()
 
-                if response.data:
-                    result = response.data
-                    if result.get("success"):
-                        return {
-                            "success": True,
-                            "message": f"Weekly matches email sent to {profile_id}!",
-                            "matches_sent": result.get("matches_sent", 0)
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "reason": result.get("reason", "unknown"),
-                            "message": {
-                                "no_email": "Profile has no email address",
-                                "email_not_verified": "Email not verified yet",
-                                "notifications_disabled": "User disabled notifications",
-                                "no_matches": "No matches found for this profile"
-                            }.get(result.get("reason"), "Could not send email")
-                        }
-                return {"error": "No response from function"}
-            else:
-                # Send to ALL eligible users
-                response = client.rpc("send_all_weekly_matches_emails").execute()
-
-                if response.data:
-                    result = response.data
+            if response.data:
+                result = response.data
+                if result.get("success"):
                     return {
                         "success": True,
-                        "message": f"Weekly emails sent to {result.get('sent', 0)} users",
-                        "sent": result.get("sent", 0),
-                        "skipped": result.get("skipped", 0),
-                        "details": result.get("details", [])
+                        "message": f"Weekly matches email sent to {profile_id}!",
+                        "matches_sent": result.get("matches_sent", 0)
                     }
-                return {"error": "No response from function"}
+                else:
+                    return {
+                        "success": False,
+                        "reason": result.get("reason", "unknown"),
+                        "message": {
+                            "no_email": "Profile has no email address",
+                            "email_not_verified": "Email not verified yet",
+                            "notifications_disabled": "User disabled notifications",
+                            "no_matches": "No matches found for this profile"
+                        }.get(result.get("reason"), "Could not send email")
+                    }
+            return {"error": "No response from function"}
 
         except Exception as e:
             if "does not exist" in str(e) or "function" in str(e).lower():

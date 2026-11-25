@@ -1,5 +1,8 @@
 -- ============================================================
--- NOT APPLIED. Needs user "pchaj" (separate from the backup_ro role migration). @ciso condition W2,
+-- APPLIED 2026-11-12 20:05 EST (2026-11-13 01:05 UTC) as revoke_public_secdef_w2_2026_11_12
+-- (migration version 20261113010520; production ACL checked read-only by @ciso 2026-11-25: PUBLIC has no EXECUTE on
+-- the 3 functions, anon/authenticated/service_role do). Header updated 2026-11-25 (was "NOT APPLIED").
+-- Original condition: user "pchaj" (separate from the backup_ro role migration). @ciso condition W2,
 -- CEO repo raporty/zespol/2026-11-12_ciso-backup-ro_review.md, section "Precheck produkcji 12.11".
 -- Closes the PUBLIC path to 3 writing SECURITY DEFINER functions found by the production precheck 2026-11-12:
 --   public.verify_email_token(text, text)                                   marks an e-mail as verified

@@ -191,3 +191,15 @@ Function `wc2026` writes over `SUPABASE_DB_URL`). Files (`security_fixes/`): `20
 Independent of `backup_ro_role_fallback_2026_11_12` (either order). Test: `tests/run_w2_revoke_local.sh` (docker,
 never Supabase): guards, atomicity, both orders, the attack as `backup_ro` before/after, callers still working,
 verify sabotage, rollback = pre-state. Report: CEO repo `raporty/zespol/2026-11-12_cto-w2-revoke_raport.md`.
+
+## send_all_weekly_matches_emails(): no EXECUTE for client roles (2026-11-25), NOT APPLIED (waits for @ciso GO + user "pchaj")
+
+The only caller, the GitHub Actions workflow `weekly-matches-email.yml` (anon key), and the MCP tool's dead
+"send to everyone" branch were removed on 2026-11-25 (user: variant A of CEO repo
+`raporty/zespol/2026-11-25_cto-backroom-weekly-matches_raport.md`). `REVOKE EXECUTE ... FROM anon, authenticated,
+public` on `public.send_all_weekly_matches_emails()`; the function body, `send_weekly_matches_email(text)` (MCP tool,
+service_role only since 22.09) and the owner stay. Files (`security_fixes/`): `2026-11-25_revoke_send_all_weekly.sql`
+(apply_migration name `revoke_send_all_weekly_2026_11_25`, guard + post-check in one transaction),
+`..._verify_after_apply.sql` (read-only, `== ALL OK ==`; run once BEFORE apply and keep the `INFO: ACL` row),
+`..._rollback.sql` (EXECUTE back to PUBLIC, anon, authenticated). Test: `tests/run_revoke_send_all_local.sh`
+(docker, never Supabase).

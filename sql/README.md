@@ -41,7 +41,7 @@ Rules:
 - Not kept here on purpose: one-off data scripts (test inserts, email fixes for a single profile,
   "clear all data") and state dumps. They contained personal data or are destructive by design.
 
-## W44 (2026-10-26): ROADMAP #19 rest + #20, APPLIED 2026-10-26 (`w44_19_20_hardening_2026_10_26`, version 20261026234249; @ciso: GO z warunkami, W1-W8 done)
+## W44 (2026-10-26): ROADMAP #19 rest + #20, APPLIED 2026-10-26 (`w44_19_20_hardening_2026_10_26`, version 20261026234249; @ciso: GO with conditions, W1-W8 done)
 
 **Do not run `2026-10-26_w44_19_20_hardening_rollback.sql` without a new migration.** It overwrites all 10 mail
 functions with their pre-W44 bodies (message text, no escaping), including the room and connection mails
@@ -62,7 +62,7 @@ transaction, so we do not rely on it. Tested locally: with an error forced just 
 nothing stays changed when the file is sent statement by statement (stop or continue on error),
 as one simple query, or inside an outer transaction (there `BEGIN` only warns). The SQL editor
 of project ifofgblilanwjhypzvdb is the fallback, same file unchanged. Apply only after
-@ciso review + user "pchaj":
+@ciso review + user "pchaj" (go-ahead to push):
 
 1. Pre-check: the guard aborts by itself on drift (md5 of 10 functions, W44 objects present).
 2. Apply as above. Error = nothing changed; stop and report, do not retry blindly.
@@ -103,7 +103,7 @@ Apply steps, in this order:
    UNION ALL SELECT 'profile_stats', count(*) FILTER (WHERE created_at < now() - interval '12 months'), count(*) FROM public.profile_stats
    UNION ALL SELECT 'rate_limits', count(*) FILTER (WHERE created_at < now() - interval '7 days'), count(*) FROM public.rate_limits;
    ```
-3. User says "pchaj". Same path as W44: `supabase-write apply_migration`, name
+3. User says "pchaj" (go-ahead to push). Same path as W44: `supabase-write apply_migration`, name
    `privacy_retention_2026_10_30`, file as is (it carries its own BEGIN/COMMIT).
 4. Verify file with the read-only MCP: `== ALL OK ==` must be true. Its row checks are valid only right
    after applying, see the file header.
@@ -177,7 +177,7 @@ two `GRANT ... IN SCHEMA auth TO backup_ro` lines of the migration.
 
 ## W2: PUBLIC loses EXECUTE on 3 writing SECURITY DEFINER functions (2026-11-12), APPLIED 2026-11-12
 
-@ciso condition W2 (CEO repo `raporty/zespol/2026-11-12_ciso-backup-ro_review.md`, section "Precheck produkcji 12.11"):
+@ciso condition W2 (CEO repo `raporty/zespol/2026-11-12_ciso-backup-ro_review.md`, section "Precheck produkcji 12.11" (production precheck)):
 must be DONE before the `backup_ro` password step. `REVOKE ALL ... FROM PUBLIC` + `GRANT EXECUTE ... TO anon,
 authenticated, service_role` for `public.verify_email_token(text,text)`, `public.wc2026_reset(text)` and
 `public.wc2026_save(text,int,int,int,int,int,text,text)`. Without it any role that logs in directly (e.g. `backup_ro`)

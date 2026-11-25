@@ -1,6 +1,7 @@
 -- ============================================================
--- APPLIED 2026-11-06 as mail_links_to_pages_2026_11_05 (night of 05/06.11, after /app went live on Cloudflare
--- Pages; verify 45/45 ALL OK, 0 functions with "huggingface"). Header updated 2026-11-25 (was "NOT APPLIED").
+-- APPLIED 2026-11-06 07:42 EST (12:42 UTC) as mail_links_to_pages_2026_11_05 (migration version 20261106124210,
+-- after /app went live on Cloudflare Pages; verify 45/45 ALL OK, 0 functions with "huggingface").
+-- Header updated 2026-11-25 (was "NOT APPLIED").
 -- Original condition: @ciso review + user "pchaj", apply only AFTER /app is live on Cloudflare Pages.
 -- Web interface moves from the Hugging Face Space to https://www.thebackroom.ai/app/ (user decision
 -- 2026-11-05, variant a of DRAFTS/2026-11-05_cto-hf-przeprowadzka_rozpoznanie.md).

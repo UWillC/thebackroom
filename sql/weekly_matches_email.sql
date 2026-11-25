@@ -288,3 +288,11 @@ ALTER TABLE profile_stats ADD CONSTRAINT profile_stats_stat_type_check
 
 -- Test sending to all:
 -- SELECT send_all_weekly_matches_emails();
+
+-- =====================================================
+-- 7. PRIVILEGES (added 2026-11-25, @ciso W1)
+-- =====================================================
+-- send_all_weekly_matches_emails() must not be callable by anon/authenticated/PUBLIC (migration
+-- security_fixes/2026-11-25_revoke_send_all_weekly.sql). CREATE OR REPLACE keeps the ACL, but DROP + CREATE
+-- restores the default PUBLIC EXECUTE (and with it anon). Keep this REVOKE after any re-create of the function.
+REVOKE EXECUTE ON FUNCTION public.send_all_weekly_matches_emails() FROM anon, authenticated, public;

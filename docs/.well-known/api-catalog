@@ -4,7 +4,7 @@
       "anchor": "https://thebackroom-mcp.onrender.com/mcp",
       "service-doc": [
         {
-          "href": "https://www.thebackroom.ai/QUICKSTART-EN.md",
+          "href": "https://www.thebackroom.ai/QUICKSTART.md",
           "type": "text/markdown",
           "title": "The Backroom MCP quick start"
         }

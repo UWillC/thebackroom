@@ -70,7 +70,7 @@ def test_app_csp_in_headers_for_both_paths():
 
 
 def test_no_space_link_left_in_published_files():
-    for f in ("index.html", "llms.txt", "QUICKSTART.md", "QUICKSTART-EN.md"):
+    for f in ("index.html", "llms.txt", "QUICKSTART.md", "QUICKSTART.pl.md"):
         assert "huggingface" not in (ROOT / "docs" / f).read_text(encoding="utf-8"), f
     assert not list((ROOT / "docs").glob(".wrangler"))
     assert ".wrangler/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
